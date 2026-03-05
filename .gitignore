@@ -1,0 +1,39 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+*.egg-info/
+dist/
+build/
+
+# Virtual environments
+.venv/
+venv/
+ENV/
+env/
+
+# Jupyter / notebooks
+.ipynb_checkpoints/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Data (keep folders, ignore contents)
+data/raw/*
+data/cache/*
+data/processed/*
+
+# But allow placeholder files (so dirs exist in git)
+!data/raw/.gitkeep
+!data/cache/.gitkeep
+!data/processed/.gitkeep
+
+# Experiment artifacts (add later if needed)
+wandb/
+mlruns/
+
+# IDE
+.vscode/

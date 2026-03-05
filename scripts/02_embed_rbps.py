@@ -5,7 +5,7 @@ import pandas as pd
 import torch
 from tqdm import tqdm
 from transformers import AutoTokenizer, AutoModel
-
+import json
 
 def mean_pool(last_hidden_state: torch.Tensor, attention_mask: torch.Tensor) -> torch.Tensor:
     """ Computes the mean of the last_hidden_state along axis 1. """
@@ -90,6 +90,16 @@ def main():
     torch.save(emb, emb_path)
     index_df.to_csv(idx_path, index=False)
 
+    # Save a small metadata JSON to be able to reproduce the results
+    meta = {
+        "model": args.model,
+        "batch_size": args.batch_size,
+        "max_aa": args.max_aa,
+        "n_sequences": int(emb.shape[0]),
+        "embedding_dim": int(emb.shape[1]),
+    }
+    (out_dir / "esm2_run_metadata.json").write_text(json.dumps(meta, indent=2))
+    
     print(f"✅ Saved embeddings: {emb_path}")
     print(f"✅ Saved index:      {idx_path}")
 

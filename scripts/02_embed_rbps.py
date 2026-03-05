@@ -4,7 +4,7 @@ from pathlib import Path
 import pandas as pd
 import torch
 from tqdm import tqdm
-from transformers import AutoTokenizer, AutoModel
+from transformers import AutoTokenizer, EsmModel
 import json
 
 def mean_pool(last_hidden_state: torch.Tensor, attention_mask: torch.Tensor) -> torch.Tensor:
@@ -46,7 +46,7 @@ def main():
 
     # Load the tokenizer and model, move the model to the device and set it to evaluation mode
     tokenizer = AutoTokenizer.from_pretrained(args.model, do_lower_case=False)  
-    model = AutoModel.from_pretrained(args.model)                               
+    model = EsmModel.from_pretrained(args.model)                               
     model.to(device)                                                            
     model.eval()                                                                
 

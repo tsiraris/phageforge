@@ -85,6 +85,17 @@ def main():
 
     # Split (by virus)
     df["split"] = split_by_virus(df, seed=args.seed)    # Add a new column "split" to the dataframe 
+    
+    print("\nViruses per genus per split:")
+    print(
+        df.groupby(["host_genus", "split"])["virus_accession"]
+        .nunique()
+        .unstack(fill_value=0)
+    )
+    print("\nProteins per genus per split:")
+    print(df["host_genus"].value_counts())
+    print(df[df["split"]=="test"]["host_genus"].value_counts())
+    
     split = df["split"].values                          # Get the values of the "split" column as a numpy array
 
     X = emb.float()                                     # Convert the embeddings to float
@@ -177,7 +188,7 @@ def main():
         preds = model(xb).argmax(dim=1).cpu().numpy()   # Get the predictions
 
     # Save the test report
-    report = classification_report(yb, preds, target_names=le.classes_, digits=3)   # Get the sklearn classification report 
+    report = classification_report(yb, preds, target_names=le.classes_, digits=3, zero_division=0)   # Get the sklearn classification report 
     (out_dir / "test_report.txt").write_text(report)                                # Write the report to a text file
     print("\n=== TEST REPORT ===\n")
     print(report)

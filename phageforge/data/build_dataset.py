@@ -25,6 +25,9 @@ ESKAPEE = {
 
 # RBP keywords
 RBP_KEYWORDS = [
+    "fiber",
+    "fibre",
+    "adhesin",
     "tail fiber",
     "tail fibre",
     "tail spike",
@@ -35,7 +38,7 @@ RBP_KEYWORDS = [
     "baseplate",
     "adsorption",
     "host recognition",
-    "host-recognition",
+    "host-recognition"
 ]
 
 @dataclass(frozen=True) # Immutable class
@@ -254,8 +257,24 @@ def build_rbp_dataset(virushost_tsv: Path, out_csv: Path, cache_dir: Path, email
     df["virus_accession"] = df["accessions"].apply(lambda xs: xs[0].split(".")[0]) 
     df = df.drop_duplicates(subset=["virus_accession", "host_genus"])
 
-    # Group by host_genus, keep only up to first max_viruses_per_genus accessions for each host_genus and reset index
-    df = df.groupby("host_genus", group_keys=False).head(max_viruses_per_genus).reset_index(drop=True)
+    # Keep different max_viruses_per_genus accessions for each host_genus
+    CAPS = {
+    "Klebsiella": 300,
+    "Acinetobacter": 300,
+    "Pseudomonas": 200,
+    "Escherichia": 200,
+    "Enterobacter": 150,
+    "Staphylococcus": 150,
+    "Enterococcus": 150,
+    }
+
+    def cap_group(g):
+        """ Cap the number of accessions for each host_genus """
+        cap = CAPS.get(g.name, max_viruses_per_genus)
+        return g.head(cap) # Return the first cap rows
+
+    # Group by host_genus, keep only up to first cap max_viruses_per_genus accessions for each host_genus and reset index
+    df = df.groupby("host_genus", group_keys=False).apply(cap_group).reset_index(drop=True)
 
     # Create a host map: a dictionary including only the virus genome accession (unversioned refseq id) to host_genus
     accessions = df["virus_accession"].tolist()  # Convert the virus_accession column to a list

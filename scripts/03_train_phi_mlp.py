@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import argparse
+import json
+import random
 from pathlib import Path
 import numpy as np
 import pandas as pd
@@ -9,6 +11,15 @@ import torch.nn as nn
 from sklearn.metrics import classification_report, f1_score, accuracy_score
 from sklearn.preprocessing import LabelEncoder
 from tqdm import tqdm
+
+
+def set_seed(seed: int):
+    """ Set Python / NumPy / PyTorch random seeds for reproducibility. """
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed_all(seed)
 
 
 def split_by_virus(df: pd.DataFrame, train_frac=0.8, val_frac=0.1, seed=42):
@@ -59,6 +70,25 @@ class MLP(nn.Module):
         return self.net(x)
 
 
+def save_split_tables(df: pd.DataFrame, out_dir: Path):
+    """ Save virus-level and protein-level split summaries as CSV files. """
+    virus_counts = (
+        df.groupby(["host_genus", "split"])["virus_accession"]
+        .nunique()
+        .unstack(fill_value=0)
+        .reset_index()
+    )
+    virus_counts.to_csv(out_dir / "split_counts_viruses.csv", index=False)
+
+    protein_counts = (
+        df.groupby(["host_genus", "split"])
+        .size()
+        .unstack(fill_value=0)
+        .reset_index()
+    )
+    protein_counts.to_csv(out_dir / "split_counts_proteins.csv", index=False)
+
+
 def main():
     # Create an ArgumentParser object and parse the command line arguments
     ap = argparse.ArgumentParser()
@@ -69,7 +99,11 @@ def main():
     ap.add_argument("--batch_size", type=int, default=64)
     ap.add_argument("--lr", type=float, default=1e-3)
     ap.add_argument("--seed", type=int, default=42)
+    ap.add_argument("--dataset_name", type=str, default="broad")
+    ap.add_argument("--use_class_weights", action="store_true")
     args = ap.parse_args()
+
+    set_seed(args.seed)
 
     out_dir = Path(args.out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -87,14 +121,18 @@ def main():
     df["split"] = split_by_virus(df, seed=args.seed)    # Add a new column "split" to the dataframe 
     
     print("\nViruses per genus per split:")
-    print(
+    virus_counts_print = (
         df.groupby(["host_genus", "split"])["virus_accession"]
         .nunique()
         .unstack(fill_value=0)
     )
+    print(virus_counts_print)
+
     print("\nProteins per genus per split:")
     print(df["host_genus"].value_counts())
     print(df[df["split"]=="test"]["host_genus"].value_counts())
+
+    save_split_tables(df, out_dir)
     
     split = df["split"].values                          # Get the values of the "split" column as a numpy array
 
@@ -112,7 +150,13 @@ def main():
 
     model = MLP(d_in=X.shape[1], n_classes=n_classes).to(device)            
     opt = torch.optim.AdamW(model.parameters(), lr=args.lr)                 # AdamW optimizer
-    loss_fn = nn.CrossEntropyLoss(weight=class_w)                           # Weighted cross entropy loss
+
+    if args.use_class_weights:
+        loss_fn = nn.CrossEntropyLoss(weight=class_w)                       # Weighted cross entropy loss
+    else:
+        loss_fn = nn.CrossEntropyLoss()                                     # Standard cross entropy loss
+
+    history_rows = []
 
     def run_epoch(split_name: str, train: bool):
         """ Run a single epoch of training or evaluation. """
@@ -150,8 +194,9 @@ def main():
         y_all = np.concatenate(y_all)                   # Concatenate all the labels
         avg_loss = total_loss / len(idxs)               # Average loss for the epoch
         macro_f1 = f1_score(y_all, preds_all, average="macro")  # Macro F1 score for the epoch
+        weighted_f1 = f1_score(y_all, preds_all, average="weighted")  # Weighted F1 score for the epoch
         acc = accuracy_score(y_all, preds_all)                  # Accuracy for the epoch
-        return avg_loss, macro_f1, acc
+        return avg_loss, macro_f1, weighted_f1, acc
 
     best_val = -1.0
     best_path = out_dir / "best_model.pt"
@@ -165,8 +210,22 @@ def main():
             print("[WARN] No val split created; check dataset.")
             break
 
-        print(f"Epoch {epoch:02d} | train loss={tr[0]:.4f} f1={tr[1]:.3f} acc={tr[2]:.3f} "
-              f"| val loss={va[0]:.4f} f1={va[1]:.3f} acc={va[2]:.3f}")
+        print(f"Epoch {epoch:02d} | train loss={tr[0]:.4f} f1={tr[1]:.3f} acc={tr[3]:.3f} "
+              f"| val loss={va[0]:.4f} f1={va[1]:.3f} acc={va[3]:.3f}")
+
+        history_rows.append(
+            {
+                "epoch": epoch,
+                "train_loss": tr[0],
+                "train_macro_f1": tr[1],
+                "train_weighted_f1": tr[2],
+                "train_acc": tr[3],
+                "val_loss": va[0],
+                "val_macro_f1": va[1],
+                "val_weighted_f1": va[2],
+                "val_acc": va[3],
+            }
+        )
 
         # Save the best model as a state dictionary and the label encoder as a list
         if va[1] > best_val:
@@ -175,6 +234,8 @@ def main():
                 {"model": model.state_dict(), "label_encoder": le.classes_.tolist()},
                 best_path           # best_path = out_dir / "best_model.pt"
             )
+
+    pd.DataFrame(history_rows).to_csv(out_dir / "history.csv", index=False)
 
     # Testing stage using the best model
     ckpt = torch.load(best_path, map_location=device)   # Load the best model
@@ -190,10 +251,46 @@ def main():
     # Save the test report
     report = classification_report(yb, preds, target_names=le.classes_, digits=3, zero_division=0)   # Get the sklearn classification report 
     (out_dir / "test_report.txt").write_text(report)                                # Write the report to a text file
+
+    test_macro_f1 = f1_score(yb, preds, average="macro", zero_division=0)
+    test_weighted_f1 = f1_score(yb, preds, average="weighted", zero_division=0)
+    test_acc = accuracy_score(yb, preds)
+
+    metrics = {
+        "dataset_name": args.dataset_name,
+        "model_name": "mlp",
+        "seed": args.seed,
+        "n_total": int(len(df)),
+        "n_train": int((df["split"] == "train").sum()),
+        "n_val": int((df["split"] == "val").sum()),
+        "n_test": int((df["split"] == "test").sum()),
+        "accuracy": float(test_acc),
+        "macro_f1": float(test_macro_f1),
+        "weighted_f1": float(test_weighted_f1),
+        "classes": le.classes_.tolist(),
+        "use_class_weights": bool(args.use_class_weights),
+        "emb_path": args.emb,
+        "idx_path": args.idx,
+    }
+    (out_dir / "metrics.json").write_text(json.dumps(metrics, indent=2))
+
+    predictions_df = pd.DataFrame(
+        {
+            "true_label": [le.classes_[i] for i in yb],
+            "pred_label": [le.classes_[i] for i in preds],
+        }
+    )
+    predictions_df.to_csv(out_dir / "test_predictions.csv", index=False)
+
     print("\n=== TEST REPORT ===\n")
     print(report)
     print(f"✅ Saved: {best_path}")
     print(f"✅ Saved: {out_dir / 'test_report.txt'}")
+    print(f"✅ Saved: {out_dir / 'metrics.json'}")
+    print(f"✅ Saved: {out_dir / 'history.csv'}")
+    print(f"✅ Saved: {out_dir / 'split_counts_viruses.csv'}")
+    print(f"✅ Saved: {out_dir / 'split_counts_proteins.csv'}")
+    print(f"✅ Saved: {out_dir / 'test_predictions.csv'}")
 
 
 if __name__ == "__main__":

@@ -1,0 +1,24 @@
+{
+  "dataset_name": "broad",
+  "model_name": "mlp",
+  "seed": 43,
+  "n_total": 3396,
+  "n_train": 2613,
+  "n_val": 405,
+  "n_test": 378,
+  "accuracy": 0.36772486772486773,
+  "macro_f1": 0.28512965568349685,
+  "weighted_f1": 0.3178628004481144,
+  "classes": [
+    "Acinetobacter",
+    "Enterobacter",
+    "Enterococcus",
+    "Escherichia",
+    "Klebsiella",
+    "Pseudomonas",
+    "Staphylococcus"
+  ],
+  "use_class_weights": false,
+  "emb_path": "data/processed/esm2_embeddings.pt",
+  "idx_path": "data/processed/esm2_embeddings_index.csv"
+}

@@ -1,0 +1,24 @@
+{
+  "dataset_name": "strict",
+  "model_name": "mlp",
+  "seed": 42,
+  "n_total": 154,
+  "n_train": 124,
+  "n_val": 15,
+  "n_test": 15,
+  "accuracy": 0.6666666666666666,
+  "macro_f1": 0.34761904761904766,
+  "weighted_f1": 0.5711111111111111,
+  "classes": [
+    "Acinetobacter",
+    "Enterobacter",
+    "Enterococcus",
+    "Escherichia",
+    "Klebsiella",
+    "Pseudomonas",
+    "Staphylococcus"
+  ],
+  "use_class_weights": false,
+  "emb_path": "data/processed/strict/esm2_embeddings.pt",
+  "idx_path": "data/processed/strict/esm2_embeddings_index.csv"
+}

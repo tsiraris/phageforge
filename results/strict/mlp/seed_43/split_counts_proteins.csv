@@ -1,0 +1,8 @@
+host_genus,test,train,val
+Acinetobacter,5,44,5
+Enterobacter,1,13,1
+Enterococcus,1,9,1
+Escherichia,1,8,1
+Klebsiella,4,32,4
+Pseudomonas,1,9,1
+Staphylococcus,1,11,1

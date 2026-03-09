@@ -1,0 +1,13 @@
+                precision    recall  f1-score   support
+
+ Acinetobacter       0.83      1.00      0.91         5
+  Enterobacter       0.00      0.00      0.00         1
+  Enterococcus       1.00      1.00      1.00         1
+   Escherichia       0.00      0.00      0.00         1
+    Klebsiella       0.40      0.50      0.44         4
+   Pseudomonas       0.00      0.00      0.00         1
+Staphylococcus       1.00      1.00      1.00         1
+
+      accuracy                           0.64        14
+     macro avg       0.46      0.50      0.48        14
+  weighted avg       0.55      0.64      0.59        14

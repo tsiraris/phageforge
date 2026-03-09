@@ -1,0 +1,23 @@
+{
+  "dataset_name": "strict",
+  "model_name": "linear_probe",
+  "seed": 44,
+  "n_total": 154,
+  "n_train": 125,
+  "n_val": 15,
+  "n_test": 14,
+  "accuracy": 0.6428571428571429,
+  "macro_f1": 0.4790764790764791,
+  "weighted_f1": 0.5945165945165944,
+  "classes": [
+    "Acinetobacter",
+    "Enterobacter",
+    "Enterococcus",
+    "Escherichia",
+    "Klebsiella",
+    "Pseudomonas",
+    "Staphylococcus"
+  ],
+  "emb_path": "data/processed/strict/esm2_embeddings.pt",
+  "idx_path": "data/processed/strict/esm2_embeddings_index.csv"
+}

@@ -8,7 +8,7 @@ import numpy as np
 from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import classification_report, f1_score, accuracy_score
 from sklearn.preprocessing import LabelEncoder
-
+import joblib
 
 def split_by_virus(df, train_frac=0.8, val_frac=0.1, seed=42):
     """ Group split by virus_accession per class to reduce leakage:
@@ -81,16 +81,27 @@ def main():
 
     df["split"] = split_by_virus(df, seed=args.seed)        # Add a new column "split" to the dataframe
 
-    print("\nViruses per genus per split:")
+    # Print Viruses per genus per split 
+    print("\nViruses per host genus per split:")
     print(
         df.groupby(["host_genus", "split"])["virus_accession"]
         .nunique()
         .unstack(fill_value=0)
     )
-    print("\nProteins per genus per split:")
-    print(df["host_genus"].value_counts())
-    print(df[df["split"]=="test"]["host_genus"].value_counts())
 
+    # Print Proteins per host genus per split
+    print("\nProteins per host genus per split:")
+    print(
+        df.groupby(["host_genus", "split"])
+        .size()
+        .unstack(fill_value=0)
+    )
+
+    # Print total proteins per host genus
+    print("\nTotal proteins per host genus:")
+    print(df["host_genus"].value_counts())
+
+    # Save split tables
     save_split_tables(df, out_dir)
 
     X_train = emb[df["split"] == "train"]   # Get the embeddings for the train set
@@ -102,10 +113,15 @@ def main():
     # Logistic Regression
     clf = LogisticRegression(
         max_iter=5000,
-        solver="lbfgs"              # Use the L-BFGS algorithm
+        solver="lbfgs",             # Use the L-BFGS optimization algorithm (2nd order optimization)
+        random_state=args.seed      # Reproducibility
     )
 
     clf.fit(X_train, y_train)       # Fit the model
+    
+    # Save the fitted linear probe so it can be reused later for inference / optimization
+    joblib.dump(clf, out_dir / "model.joblib")
+    (out_dir / "label_classes.json").write_text(json.dumps(le.classes_.tolist(), indent=2))
 
     preds = clf.predict(X_test)     # Predict
 
@@ -152,6 +168,8 @@ def main():
     print(f"✅ Saved: {out_dir / 'split_counts_viruses.csv'}")
     print(f"✅ Saved: {out_dir / 'split_counts_proteins.csv'}")
     print(f"✅ Saved: {out_dir / 'test_predictions.csv'}")
+    print(f"✅ Saved: {out_dir / 'model.joblib'}")
+    print(f"✅ Saved: {out_dir / 'label_classes.json'}")
 
 
 if __name__ == "__main__":

@@ -1,0 +1,8 @@
+host_genus,test,train,val
+Acinetobacter,113,644,109
+Enterobacter,60,475,86
+Enterococcus,5,70,11
+Escherichia,95,529,82
+Klebsiella,50,493,55
+Pseudomonas,34,244,44
+Staphylococcus,21,158,18

@@ -1,0 +1,15 @@
+true_label,pred_label
+Acinetobacter,Acinetobacter
+Acinetobacter,Acinetobacter
+Acinetobacter,Acinetobacter
+Acinetobacter,Acinetobacter
+Acinetobacter,Acinetobacter
+Enterobacter,Klebsiella
+Enterococcus,Enterococcus
+Escherichia,Klebsiella
+Klebsiella,Klebsiella
+Klebsiella,Enterobacter
+Klebsiella,Klebsiella
+Klebsiella,Acinetobacter
+Pseudomonas,Klebsiella
+Staphylococcus,Staphylococcus

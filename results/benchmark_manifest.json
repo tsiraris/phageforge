@@ -1,0 +1,24 @@
+{
+  "results_root": "results",
+  "seeds": [
+    42,
+    43,
+    44
+  ],
+  "datasets": [
+    {
+      "dataset_name": "broad",
+      "emb": "data/processed/esm2_embeddings.pt",
+      "idx": "data/processed/esm2_embeddings_index.csv"
+    },
+    {
+      "dataset_name": "strict",
+      "emb": "data/processed/strict/esm2_embeddings.pt",
+      "idx": "data/processed/strict/esm2_embeddings_index.csv"
+    }
+  ],
+  "epochs": 30,
+  "batch_size": 64,
+  "lr": 0.001,
+  "use_class_weights": false
+}

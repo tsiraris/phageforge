@@ -120,17 +120,25 @@ def main():
     # Split (by virus)
     df["split"] = split_by_virus(df, seed=args.seed)    # Add a new column "split" to the dataframe 
     
-    print("\nViruses per genus per split:")
-    virus_counts_print = (
+    # Print Viruses per genus per split 
+    print("\nViruses per host genus per split:")
+    print(
         df.groupby(["host_genus", "split"])["virus_accession"]
         .nunique()
         .unstack(fill_value=0)
     )
-    print(virus_counts_print)
 
-    print("\nProteins per genus per split:")
+    # Print Proteins per host genus per split
+    print("\nProteins per host genus per split:")
+    print(
+        df.groupby(["host_genus", "split"])
+        .size()
+        .unstack(fill_value=0)
+    )
+
+    # Print total proteins per host genus
+    print("\nTotal proteins per host genus:")
     print(df["host_genus"].value_counts())
-    print(df[df["split"]=="test"]["host_genus"].value_counts())
 
     save_split_tables(df, out_dir)
     
@@ -252,8 +260,9 @@ def main():
     report = classification_report(yb, preds, target_names=le.classes_, digits=3, zero_division=0)   # Get the sklearn classification report 
     (out_dir / "test_report.txt").write_text(report)                                # Write the report to a text file
 
-    test_macro_f1 = f1_score(yb, preds, average="macro", zero_division=0)
-    test_weighted_f1 = f1_score(yb, preds, average="weighted", zero_division=0)
+    # Calculate test metrics: macro F1, weighted F1, and accuracy
+    test_macro_f1 = f1_score(yb, preds, average="macro", zero_division=0)        # Computes the metric independently for each class, then average equally (all classes have the same weight/importance). 
+    test_weighted_f1 = f1_score(yb, preds, average="weighted", zero_division=0)  # Averages per-class scores, but weights each class by its support (number of protein sequences per class in the test set)
     test_acc = accuracy_score(yb, preds)
 
     metrics = {

@@ -195,6 +195,12 @@ The script:
 3. scores them using the trained host classifier
 4. ranks candidates by predicted host probability
 
+## Stage 4b — Design run summarization
+
+```bash
+python scripts/04b_summarize_design_run.py \
+  --run_dir results/design_runs/kleb_to_pseudomonas_esm_guided
+
 Example:
 
 ```bash

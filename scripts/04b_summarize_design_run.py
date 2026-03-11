@@ -41,7 +41,7 @@ def main():
         .reset_index(name="count")
     )
     
-    # Count the number of mutations
+    # Count the distribution of mutation counts across the top candidates
     mutation_count_counts = (
         top_df["n_mutations"]
         .value_counts()

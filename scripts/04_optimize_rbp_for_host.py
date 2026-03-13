@@ -42,7 +42,8 @@ def load_seed_sequence(seed_csv: Path, seed_protein_id: str) -> tuple[str, str, 
 
 def embed_sequences(
     sequences: list[str],
-    model_name: str,
+    tokenizer,
+    model,
     batch_size: int,
     max_aa: int,
     device: str,
@@ -201,6 +202,58 @@ def propose_esm_guided_mutation(
     mutation_str = ";".join(mutations)                          # Join all the mutations track strings with a semicolon  
     return mutated_seq, mutation_str
 
+def sequence_distance(seq_a: str, seq_b: str) -> int:
+    """ Count the differing positions between two protein sequences. """
+    # If the lengths are different, add the difference to the distance
+    if len(seq_a) != len(seq_b):
+        return abs(len(seq_a) - len(seq_b)) + sum(
+            a != b for a, b in zip(seq_a, seq_b)
+        )
+    # If the lengths are equal, just return the number of differing positions
+    return sum(a != b for a, b in zip(seq_a, seq_b)) 
+
+
+def select_diverse_top_candidates(
+    df: pd.DataFrame,
+    keep_top_k: int,
+    min_distance: int,
+) -> pd.DataFrame:
+    """ Select top k candidates that are diverse enough from each other. 
+    Input args: 
+        df: dataframe of candidates sorted by target score
+        keep_top_k: number of candidates to keep
+        min_distance: minimum distance between candidates to keep them diverse enough
+    Output: 
+        dataframe of top k candidates that are diverse enough from each other
+    """
+    
+    selected_rows = []
+    selected_sequences = []
+
+    # Iterate over the dataframe and select top k candidates that are diverse enough
+    for _, row in df.iterrows(): 
+        seq = row["aa_sequence"]
+
+        # If the sequence is diverse enough, select it
+        if all(sequence_distance(seq, prev) >= min_distance for prev in selected_sequences):
+            selected_rows.append(row)
+            selected_sequences.append(seq)
+        # When there are enough diverse candidates, stop
+        if len(selected_rows) >= keep_top_k:
+            break
+    
+    # If there are not enough diverse candidates, just select the first k that aren't already selected (dataframe is already sorted by target score)
+    if len(selected_rows) < keep_top_k:
+        
+        selected_ids = {row["candidate_id"] for row in selected_rows}   # Set of selected candidate ids
+        for _, row in df.iterrows():                                    # Iterate over the dataframe
+            if row["candidate_id"] in selected_ids:                     # If the candidate id is already selected
+                continue                                                # Skip it
+            selected_rows.append(row)                                   # Add the row to the selected rows
+            if len(selected_rows) >= keep_top_k:                        # If there are enough selected rows
+                break                                                   # Stop
+    # Return the selected rows as a dataframe and reset the index
+    return pd.DataFrame(selected_rows).reset_index(drop=True)
 
 def main():
     ap = argparse.ArgumentParser()
@@ -219,6 +272,8 @@ def main():
     ap.add_argument("--keep_top_k", type=int, default=10)                                   # Number of top candidates to keep from each optimization round
     ap.add_argument("--proposal_top_k", type=int, default=8)                                # Number of top proposed by the ESM candidates to keep 
     ap.add_argument("--seed", type=int, default=42)
+    ap.add_argument("--diversity_on", action="store_true")
+    ap.add_argument("--diversity_min_distance", type=int, default=8)
     ap.add_argument("--out_dir", type=str, default="results/design_runs")
     args = ap.parse_args()
 
@@ -345,7 +400,8 @@ def main():
         # Embed all proposed candidates
         embeddings = embed_sequences(
             sequences=proposed_df["aa_sequence"].tolist(),
-            model_name=args.esm_model,
+            tokenizer=tokenizer,
+            model=esm_mlm,
             batch_size=args.batch_size,
             max_aa=args.max_aa,
             device=device,
@@ -370,7 +426,7 @@ def main():
             ascending=[False, True]
         ).reset_index(drop=True)
 
-        # Assign a rank to each proposed candidate (= the order in which they were proposeds)
+        # Assign rank within the round after sorting by target score and mutation count
         proposed_df["rank_in_round"] = range(1, len(proposed_df) + 1)
 
         # Save all proposed candidates for each round to csv
@@ -379,9 +435,20 @@ def main():
         # Keep track of all proposed candidates across rounds
         all_rows.append(proposed_df)
 
-        # Keep only the top k candidates of this round to seed the next round
-        current_pool = proposed_df.head(args.keep_top_k).to_dict(orient="records")
-    
+        # If diversity is enabled, select the most diverse top k candidates
+        if args.diversity_on:
+            selected_df = select_diverse_top_candidates(
+                proposed_df,
+                keep_top_k=args.keep_top_k,
+                min_distance=args.diversity_min_distance,
+            )
+        # Else keep only the top k candidates based on target score of this round to seed the next round
+        else:
+            selected_df = proposed_df.head(args.keep_top_k).copy()
+
+        # Update the current pool by adding the selected candidates 
+        current_pool = selected_df.to_dict(orient="records")     
+        
     # Raise error if no candidates were generated
     if len(all_rows) == 0:
         raise RuntimeError("No candidate rounds were successfully generated.")
@@ -390,13 +457,25 @@ def main():
     all_candidates_df = pd.concat(all_rows, axis=0).reset_index(drop=True)
     all_candidates_df.to_csv(out_dir / "all_candidates.csv", index=False)
 
-    # Sort the proposed candidates across all rounds by target score descending, number of mutations ascending, and save final top head (50) candidates
-    final_top_df = (
-        all_candidates_df.sort_values(by=["target_score", "n_mutations"], ascending=[False, True])
+    # Rank all candidates across all rounds by score and mutation count.
+    all_candidates_ranked_df = (
+        all_candidates_df
+        .sort_values(by=["target_score", "n_mutations"], ascending=[False, True])
         .drop_duplicates(subset=["aa_sequence"])
-        .head(50)
         .reset_index(drop=True)
     )
+
+    # If diversity is enabled, select a diverse final top-50 set.
+    if args.diversity_on:
+        final_top_df = select_diverse_top_candidates(
+            all_candidates_ranked_df,
+            keep_top_k=50,
+            min_distance=args.diversity_min_distance,
+        )
+    else:
+        final_top_df = all_candidates_ranked_df.head(50).reset_index(drop=True)
+
+    # Save final top 50 candidates (diverse or not) to csv
     final_top_df.to_csv(out_dir / "top_candidates.csv", index=False)
 
     # Save a compact run metadata file
@@ -417,6 +496,8 @@ def main():
         "seed": args.seed,
         "n_total_candidates": int(len(all_candidates_df)),
         "n_top_candidates_saved": int(len(final_top_df)),
+        "diversity_on": args.diversity_on,
+        "diversity_min_distance": args.diversity_min_distance,
     }
     (out_dir / "run_metadata.json").write_text(json.dumps(metadata, indent=2))
 

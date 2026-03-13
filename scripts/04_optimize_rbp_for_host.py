@@ -52,12 +52,6 @@ def embed_sequences(
     Embed amino-acid sequences using the encoder part of an MLM (Masked Language Model) checkpoint.
     Returns a numpy array of shape [N, H].
     """
-    # Load the tokenizer and model, move the model to the device and set it to evaluation mode
-    tokenizer = AutoTokenizer.from_pretrained(model_name, do_lower_case=False)
-    model = EsmForMaskedLM.from_pretrained(model_name)
-    model.to(device)
-    model.eval()
-
     embs = []
 
     # Embed sequences in batches

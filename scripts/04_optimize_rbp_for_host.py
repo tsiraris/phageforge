@@ -55,7 +55,7 @@ def embed_sequences(
     embs = []
 
     # Embed sequences in batches
-    with torch.inference_mode():  
+    with torch.inference_mode():
         for start in range(0, len(sequences), batch_size):
             batch = sequences[start : start + batch_size]
 
@@ -86,7 +86,7 @@ def embed_sequences(
     return emb
 
 
-def choose_mutation_positions_randomly(seq: str, n_mutations: int, rng: random.Random) -> list[int]:
+def choose_mutation_positions(seq: str, n_mutations: int, rng: random.Random) -> list[int]:
     """
     Randomly choose which sequence positions to mutate.
     Returns a list of positions in the protein sequence.
@@ -109,54 +109,66 @@ def get_amino_acid_token_ids(tokenizer) -> list[int]:
     """
     Collect tokenizer ids corresponding to one-letter amino-acid tokens.
     """
-    aa_token_ids = []                                                                               # List of tokenizer ids
-    for aa in AMINO_ACIDS:                                                                          # For each one-letter amino acid
-        tok_id = tokenizer.convert_tokens_to_ids(aa)                                                # Get the tokenizer id (= the integer corresponding to the one-letter amino acid)
-        if tok_id is not None and tok_id != tokenizer.unk_token_id:                                 # If the tokenizer id is not None and not the unknown token
-            aa_token_ids.append(int(tok_id))                                                        # Add the tokenizer id to the list
-    if len(aa_token_ids) == 0:                                                                      # If the list is empty
-        raise ValueError("Could not resolve one-letter amino-acid token ids from tokenizer.")       # Raise an error
-    return aa_token_ids                                                                             # Return the list
+    aa_token_ids = []
+    for aa in AMINO_ACIDS:
+        tok_id = tokenizer.convert_tokens_to_ids(aa)                                     # Convert each amino-acid token string to its tokenizer id
+        if tok_id is not None and tok_id != tokenizer.unk_token_id:                      # Keep only valid amino-acid ids and ignore unknown-token collisions
+            aa_token_ids.append(int(tok_id))
+    if len(aa_token_ids) == 0:
+        raise ValueError("Could not resolve one-letter amino-acid token ids from tokenizer.")
+    return aa_token_ids
 
 
-def compute_position_entropies(
-    seq: str,
+def compute_position_entropies_batch(
+    sequences: list[str],
     tokenizer,
     model,
     max_aa: int,
     device: str,
     aa_token_ids: list[int],
-) -> np.ndarray:
+    batch_size: int,
+) -> list[np.ndarray]:
     """
-    Compute an uncertainty score (Shannon entropy) for each residue position in the input sequence.
-    The entropy is computed from the ESM logits restricted to valid amino-acid tokens (higher entropy --> multiple amino acids plausible at that position).
-    Returns a numpy array of shape [L] with uncertainty scores.
+    Compute an uncertainty score (Shannon entropy) for each residue position in a batch of input sequences.
+
+    The entropy is computed from the ESM logits restricted to valid amino-acid tokens.
+    Higher entropy means the model considers multiple amino acids plausible at that position.
     """
-    # If the sequence is longer than max_aa, raise an error
-    if len(seq) > max_aa:
-        raise ValueError(f"Sequence length {len(seq)} exceeds max_aa={max_aa}")
+    all_entropies = []
 
-    # Tokenize one sequence: Add special tokens, look up the integers in the vocabulary, and return a PyTorch tensor dictionary of tokens
-    toks = tokenizer(
-        [seq],
-        return_tensors="pt",
-        padding=True,
-        truncation=True,
-        max_length=max_aa,
-    ).to(device)                # [1, L] dictionary of PyTorch tensors; L = tokenized sequence length
-
+    # Compute entropies in batches so the current parent pool can be processed with fewer forward passes
     with torch.inference_mode():
-        # Feed the unmasked sequence into the model and inspect its token distribution at each residue position
-        outputs = model(input_ids=toks["input_ids"], attention_mask=toks["attention_mask"])
-        # Extract the logits (raw, un-normalized prediction scores) for every single token in the vocabulary
-        logits = outputs.logits  # [1, L, vocab]
+        for start in range(0, len(sequences), batch_size):
+            batch = sequences[start : start + batch_size]
 
-    aa_logits = logits[0, 1 : len(seq) + 1, aa_token_ids]           # Restrict the logits to valid one-letter amino-acid tokens only [seq_len, 20]
-    aa_probs = torch.softmax(aa_logits, dim=-1)                     # Get the softmax probabilities in the vertical dimension [seq_len, 20]
-    aa_log_probs = torch.log(aa_probs.clamp(min=1e-12))             # Get the log probabilities [seq_len, 20]
-    entropies = -(aa_probs * aa_log_probs).sum(dim=-1)              # Compute the Shannon entropy [seq_len]
-    
-    return entropies.detach().cpu().numpy()                         # Convert the PyTorch tensor to a numpy array
+            # Check that every sequence in the batch fits inside the ESM maximum sequence length
+            for seq in batch:
+                if len(seq) > max_aa:
+                    raise ValueError(f"Sequence length {len(seq)} exceeds max_aa={max_aa}")
+
+            # Tokenize the input sequences batch
+            toks = tokenizer(
+                batch,
+                return_tensors="pt",    # Return PyTorch tensors
+                padding=True,
+                truncation=True,
+                max_length=max_aa,
+            ).to(device)
+
+            # Feed the unmasked sequences into the model and inspect their token distributions at each residue position
+            outputs = model(input_ids=toks["input_ids"], attention_mask=toks["attention_mask"])
+            logits = outputs.logits                                                     # [B, L, vocab]
+
+            # Compute one entropy vector per sequence while ignoring padding and special tokens
+            for batch_idx, seq in enumerate(batch):
+                seq_len = len(seq)                                                      # Real amino-acid sequence length
+                aa_logits = logits[batch_idx, 1 : seq_len + 1, aa_token_ids]            # [seq_len, 20]: Restrict the logits to valid one-letter amino-acid tokens only
+                aa_probs = torch.softmax(aa_logits, dim=-1)                              # [seq_len, 20]: Convert the logits to probabilities
+                aa_log_probs = torch.log(aa_probs.clamp(min=1e-12))                      # [seq_len, 20]: Stable log-probabilities for the entropy formula
+                entropies = -(aa_probs * aa_log_probs).sum(dim=-1)                       # [seq_len]: Shannon entropy per residue position
+                all_entropies.append(entropies.detach().cpu().numpy())                   # Save one entropy vector per sequence in CPU memory
+
+    return all_entropies
 
 
 def choose_mutation_positions_entropy_guided(
@@ -173,8 +185,6 @@ def choose_mutation_positions_entropy_guided(
     1. rank positions by entropy
     2. keep only the top candidate_pool_size uncertain positions
     3. sample without replacement from that pool using entropy-weighted probabilities
-
-    Returns a list of positions in the protein sequence.
     """
     # If n_mutations is zero, return the original sequence (Adapted for this function: return empty list)
     if n_mutations <= 0:
@@ -188,7 +198,7 @@ def choose_mutation_positions_entropy_guided(
 
     # If no scores are available, fall back to random choice
     if len(position_scores) != len(seq):
-        return choose_mutation_positions_randomly(seq=seq, n_mutations=n_mutations, rng=rng)
+        return choose_mutation_positions(seq=seq, n_mutations=n_mutations, rng=rng)
 
     # Rank positions by entropy descending and keep a candidate pool of the most uncertain positions
     ranked_positions = np.argsort(-position_scores).tolist()
@@ -196,120 +206,133 @@ def choose_mutation_positions_entropy_guided(
     candidate_positions = ranked_positions[:pool_size]
 
     # Convert candidate scores to positive sampling weights
-    candidate_scores = np.array([max(float(position_scores[p]), 1e-8) for p in candidate_positions], dtype=float)   # Make sure all scores are positive (min = 1e-8) 
-    candidate_scores = candidate_scores / candidate_scores.sum()                                                    # Normalize
+    candidate_scores = np.array([max(float(position_scores[p]), 1e-8) for p in candidate_positions], dtype=float)
+    candidate_scores = candidate_scores / candidate_scores.sum()
 
-    # Create a list of selected positions and a list of remaining positions and scores to sample from
     selected_positions = []
     remaining_positions = candidate_positions.copy()
     remaining_scores = candidate_scores.copy()
 
     # Sample without replacement using entropy-weighted probabilities
-    while len(selected_positions) < n_mutations and len(remaining_positions) > 0:           # Keep sampling until n_mutations positions have been selected
-        chosen_idx = rng.choices(                                                           # Randomly sample
-            population=list(range(len(remaining_positions))),                               # From the list of remaining positions
-            weights=remaining_scores.tolist(),                                              # Using the remaining scores as sampling weights
-            k=1,                                                                            # Sample one position
-        )[0]                                                                                # Get the index of the selected position
-        selected_positions.append(remaining_positions.pop(chosen_idx))                      # Add the selected position to the list
-        remaining_scores = np.delete(remaining_scores, chosen_idx)                          # Remove the selected position from the list
+    while len(selected_positions) < n_mutations and len(remaining_positions) > 0:
+        chosen_idx = rng.choices(
+            population=list(range(len(remaining_positions))),
+            weights=remaining_scores.tolist(),
+            k=1,
+        )[0]
+        selected_positions.append(remaining_positions.pop(chosen_idx))
+        remaining_scores = np.delete(remaining_scores, chosen_idx)
 
-        if len(remaining_scores) > 0:                                                       # If there are remaining positions
-            remaining_scores = remaining_scores / remaining_scores.sum()                    # Normalize the remaining scores
+        if len(remaining_scores) > 0:
+            remaining_scores = remaining_scores / remaining_scores.sum()
 
-    return sorted(selected_positions)        # Return the list of selected positions
+    return sorted(selected_positions)
 
 
-def propose_esm_guided_mutation(
-    seq: str,
-    positions: list[int],
+def build_masked_candidate_batch(
+    parent_sequence: str,
+    positions_list: list[list[int]],
     tokenizer,
-    model,
     max_aa: int,
     device: str,
-    top_k: int,     # Number of top-k amino acid predictions from ESM to consider
-    rng: random.Random,
-) -> tuple[str, str]:
+) -> tuple[dict[str, torch.Tensor], list[list[int]]]:
     """
-    Propose a mutated sequence by masking selected positions and sampling plausible residues
-    from the top-k ESM predictions at each position.
+    Build a batch of masked tokenized sequences for a single parent sequence and many mutation-position sets.
 
     Returns:
-        mutated_sequence = the resulting mutated sequence, mutation_string = a string of all the mutations that were applied (aa changes) and in which positions of the sequence
-    mutation_string example:
-        "A15G;L42P" = mutation at position 15 from A to G and mutation at position 42 from L to P
+        token_batch = tokenized batch of sequences with the requested positions masked
+        valid_positions_list = mutation positions aligned with the returned batch rows
     """
-    # If the sequence is longer than max_aa, raise an error
-    if len(seq) > max_aa:
-        raise ValueError(f"Sequence length {len(seq)} exceeds max_aa={max_aa}")
+    # Ensure the parent sequence is not too long
+    if len(parent_sequence) > max_aa:
+        raise ValueError(f"Sequence length {len(parent_sequence)} exceeds max_aa={max_aa}")
 
-    # Tokenize one sequence: Add special tokens, look up the integers in the vocabulary, and return a PyTorch tensor dictionary of tokens
+    # Tokenize one repeated parent sequence for each candidate so the masked proposals can be scored in one batched forward pass
     toks = tokenizer(
-        [seq],
-        return_tensors="pt",
+        [parent_sequence] * len(positions_list),        # Repeat the parent sequence as many times as there are candidates
+        return_tensors="pt",                            # Return PyTorch tensors
         padding=True,
         truncation=True,
         max_length=max_aa,
-    ).to(device)                # [1, L] dictionary of PyTorch tensors; L = tokenized sequence length
+    ).to(device)
 
-    # Clone the tokenized sequence to avoid modifying it
-    input_ids = toks["input_ids"].clone()
-
-    # Get the specific integer (ID) of the <mask> token (blank space) from the tokenizer vocabulary
-    mask_token_id = tokenizer.mask_token_id
+    # Clone the tokenized batch to avoid modifying the original tokens
+    input_ids = toks["input_ids"].clone()       
+    
+    # Get the specific integer (ID) of the <mask> token from the tokenizer vocabulary        
+    mask_token_id = tokenizer.mask_token_id             
     if mask_token_id is None:
         raise ValueError("Tokenizer does not expose a mask token id.")
 
-    # Convert chosen for mutation positions to token positions by shifting them by 1 (because ESM tokenizers add special tokens at the beginning)
-    token_positions = [p + 1 for p in positions]
+    valid_positions_list = []
 
-    # Apply the <mask> token at the chosen positions
-    for tp in token_positions:
+    # Apply the <mask> token at the chosen positions for every candidate in the batch
+    for row_idx, positions in enumerate(positions_list):                    # Loop over the candidates
+        valid_positions = []
 
-        if tp >= input_ids.shape[1] - 1:        # Skip if the token position is out of bounds
-            continue
+        for pos in positions:                                               # Loop over the mutation positions
+            token_position = pos + 1                                        # Convert sequence positions to token positions by shifting them by 1 because ESM tokenizers add special tokens at the beginning
+            if token_position >= input_ids.shape[1] - 1:                    # Skip if the token position is out of bounds
+                continue
+            input_ids[row_idx, token_position] = mask_token_id              # Mask the requested residue position for this candidate row
+            valid_positions.append(pos)                                     # Add the mutation position  to the list
 
-        input_ids[0, tp] = mask_token_id        # Masked tokenized sequence tensor
+        valid_positions_list.append(valid_positions)                        # Add the list of valid mutation positions to the batch
 
-    with torch.inference_mode():
-        # Feed the mask tensor into the model, which will predict the most likely amino acid at each position based on the surrounding context
-        outputs = model(input_ids=input_ids, attention_mask=toks["attention_mask"])
-        # Extract the logits (raw, un-normalized prediction scores) for every single token in the vocabulary
-        logits = outputs.logits  # [1, L, vocab]
+    toks["input_ids"] = input_ids                                           # Replace the input ids in the token dictionary with the masked version
+    return toks, valid_positions_list                                       # Return the tokenized batch and the list of valid mutation positions
 
-    seq_list = list(seq)                                        # Convert the protein sequence to a list
-    mutations = []
 
-    # Apply the mutations
-    for pos, tp in zip(positions, token_positions):             # For each position and token position
-        # If the token position is out of bounds, skip
-        if tp >= logits.shape[1] - 1:
-            continue
+def sample_mutations_from_batched_logits(
+    parent_sequence: str,
+    valid_positions_list: list[list[int]],
+    logits: torch.Tensor,
+    tokenizer,
+    top_k: int,
+    rng: random.Random,
+) -> tuple[list[str], list[str]]:
+    """
+    Convert batched masked-token logits into mutated sequences and mutation strings.
 
-        # Get the logits only for masked (/to be mutated) positions and select the top-k residues
-        residue_logits = logits[0, tp]  # [vocab]
-        top_ids = torch.topk(residue_logits, k=top_k).indices.tolist() # A list of the top-k token ids (integers) with the highest logit score
+    Returns:
+        mutated_sequences = list of resulting mutated sequences
+        mutation_strings = list of mutation-string annotations
+    """
 
-        # Convert ids to tokens and keep only valid one-letter amino acids
-        candidate_aas = []
-        for tok_id in top_ids:
-            tok = tokenizer.convert_ids_to_tokens(tok_id)       # Convert the token id to a token (string)
-            if tok in AMINO_ACIDS and tok != seq_list[pos]:     # If the token is a valid one-letter amino acid and not the same as the original amino acid at the position
-                candidate_aas.append(tok)                       # Add the token to the candidates
+    mutated_sequences = []
+    mutation_strings = []
 
-        # If there are no valid candidates, skip
-        if not candidate_aas:
-            continue
+    # Convert each batch row of logits to a mutated sequence and a mutation string
+    for row_idx, positions in enumerate(valid_positions_list):
+        seq_list = list(parent_sequence)                                                # Convert the protein sequence to a list so residues can be replaced in place
+        mutations = []
 
-        # Randomly select a new amino acid from the candidates
-        old_aa = seq_list[pos]                                  # Get the old amino acid at the position
-        new_aa = rng.choice(candidate_aas)                      # Randomly select a new amino acid from the candidates list
-        seq_list[pos] = new_aa                                  # Replace the old amino acid with the new one
-        mutations.append(f"{old_aa}{pos+1}{new_aa}")            # Add the mutation to the mutations track list
+        for pos in positions:                                                           # For each chosen mutation position
+            token_position = pos + 1                                                    # Convert sequence position to token position by shifting it by 1
+            if token_position >= logits.shape[1] - 1:                                   # Skip if the token position is out of bounds
+                continue
 
-    mutated_seq = "".join(seq_list)                             # Join the final mutated sequence to a string
-    mutation_str = ";".join(mutations)                          # Join all the mutations track strings with a semicolon
-    return mutated_seq, mutation_str
+            residue_logits = logits[row_idx, token_position]                            # [vocab]: Get the logits only for the masked (/to be mutated) position
+            top_ids = torch.topk(residue_logits, k=top_k).indices.tolist()              # A list of the top-k token ids (integers) with the highest logit score
+
+            candidate_aas = []
+            for tok_id in top_ids:
+                tok = tokenizer.convert_ids_to_tokens(tok_id)                           # Convert the token id to a token (string)
+                if tok in AMINO_ACIDS and tok != seq_list[pos]:                         # If the token is a valid one-letter amino acid and not the same as the original amino acid at the position
+                    candidate_aas.append(tok)                                           # Add the token to the candidate list
+
+            if not candidate_aas:                                                       # If there are no valid candidates, skip this position
+                continue
+
+            old_aa = seq_list[pos]                                                      # Get the old amino acid at the position
+            new_aa = rng.choice(candidate_aas)                                          # Randomly select a new amino acid from the candidate list
+            seq_list[pos] = new_aa                                                      # Replace the old amino acid with the new one
+            mutations.append(f"{old_aa}{pos+1}{new_aa}")                                # Add the mutation to the mutation-track list
+
+        mutated_sequences.append("".join(seq_list))                                     # Join the final mutated sequence to a string
+        mutation_strings.append(";".join(mutations))                                    # Join all the mutation strings with a semicolon
+
+    return mutated_sequences, mutation_strings
 
 
 def sequence_distance(seq_a: str, seq_b: str) -> int:
@@ -330,7 +353,7 @@ def select_diverse_top_candidates(
 ) -> pd.DataFrame:
     """ Select top k candidates that are diverse enough from each other.
     Input args:
-        df: dataframe of candidates sorted by target score
+        df: dataframe of candidates sorted by selection score
         keep_top_k: number of candidates to keep
         min_distance: minimum distance between candidates to keep them diverse enough
     Output:
@@ -352,18 +375,60 @@ def select_diverse_top_candidates(
         if len(selected_rows) >= keep_top_k:
             break
 
-    # If there are not enough diverse candidates, just select the first k that aren't already selected (dataframe is already sorted by target score)
+    # If there are not enough diverse candidates, just select the first k that aren't already selected (dataframe is already sorted by selection score)
     if len(selected_rows) < keep_top_k:
 
-        selected_ids = {row["candidate_id"] for row in selected_rows}   # Set of selected candidate ids
-        for _, row in df.iterrows():                                    # Iterate over the dataframe
-            if row["candidate_id"] in selected_ids:                     # If the candidate id is already selected
-                continue                                                # Skip it
-            selected_rows.append(row)                                   # Add the row to the selected rows
-            if len(selected_rows) >= keep_top_k:                        # If there are enough selected rows
-                break                                                   # Stop
+        selected_ids = {row["candidate_id"] for row in selected_rows}                   # Set of selected candidate ids
+        for _, row in df.iterrows():                                                    # Iterate over the dataframe
+            if row["candidate_id"] in selected_ids:                                     # If the candidate id is already selected
+                continue                                                                # Skip it
+            selected_rows.append(row)                                                   # Add the row to the selected rows
+            if len(selected_rows) >= keep_top_k:                                        # If there are enough selected rows
+                break                                                                   # Stop
+
     # Return the selected rows as a dataframe and reset the index
     return pd.DataFrame(selected_rows).reset_index(drop=True)
+
+
+def normalize_rows(x: np.ndarray) -> np.ndarray:
+    """ L2-normalize each embedding row for cosine-similarity computations. """
+    return x / np.clip(np.linalg.norm(x, axis=1, keepdims=True), 1e-12, None)       # Clip the norm to avoid division by zero
+
+
+def compute_seed_similarity_columns(
+    candidate_embeddings: np.ndarray,
+    seed_embedding_normalized: np.ndarray,
+) -> tuple[np.ndarray, np.ndarray]:
+    """
+    Compute seed cosine similarity and novelty distance for a batch of candidate embeddings.
+
+    Returns:
+        seed_cosine_similarity = cosine similarity between each candidate and the seed embedding
+        seed_novelty_distance = 1 - cosine similarity
+    """
+    candidate_embeddings_normalized = normalize_rows(candidate_embeddings)                  # Normalize candidate embeddings once so cosine similarity becomes a dot product
+    seed_cosine_similarity = candidate_embeddings_normalized @ seed_embedding_normalized    # [N]: Cosine similarity between every candidate and the seed embedding
+    seed_novelty_distance = 1.0 - seed_cosine_similarity                                    # [N]: Novelty distance away from the seed embedding
+    return seed_cosine_similarity, seed_novelty_distance
+
+
+def compute_novelty_penalty_weight(
+    round_idx: int,
+    total_rounds: int,
+    novelty_penalty_lambda: float,
+    novelty_penalty_schedule: str,
+) -> float:
+    """
+    Compute the novelty-penalty weight used in selection_score for the current round.
+    """
+    if novelty_penalty_schedule == "constant":                                           # Keep the same novelty penalty in every round for easier interpretability
+        return novelty_penalty_lambda
+
+    if total_rounds <= 1:                                                                # Avoid division by zero if the run has only one round
+        return novelty_penalty_lambda
+
+    round_fraction = (round_idx - 1) / max(total_rounds - 1, 1)                          # Convert the round number to a fraction between 0 and 1
+    return novelty_penalty_lambda * round_fraction                                       # Increase the novelty penalty gradually across rounds with a simple linear schedule
 
 
 def main():
@@ -374,7 +439,8 @@ def main():
     ap.add_argument("--model_path", type=str, required=True)
     ap.add_argument("--label_classes_path", type=str, required=True)
     ap.add_argument("--esm_model", type=str, default="facebook/esm2_t33_650M_UR50D")
-    ap.add_argument("--batch_size", type=int, default=4)
+    ap.add_argument("--batch_size", type=int, default=8)                                    # Batch size for sequence embedding and parent-entropy computation
+    ap.add_argument("--proposal_batch_size", type=int, default=16)                          # Batch size for masked mutation-proposal forward passes from the same parent sequence
     ap.add_argument("--max_aa", type=int, default=1022)
     ap.add_argument("--rounds", type=int, default=5)                                        # Number of optimization rounds
     ap.add_argument("--candidates_per_round", type=int, default=64)                         # Number of candidate sequences per round
@@ -384,9 +450,11 @@ def main():
     ap.add_argument("--proposal_top_k", type=int, default=8)                                # Number of top proposed by the ESM candidates to keep
     ap.add_argument("--seed", type=int, default=42)
     ap.add_argument("--diversity_on", action="store_true")
-    ap.add_argument("--diversity_min_distance", type=int, default=8)
-    ap.add_argument("--position_selection_strategy", type=str, default="random", choices=["random", "entropy"])     # Position selection strategy: random or entropy
-    ap.add_argument("--entropy_guided_position_pool_size", type=int, default=32)                           # Number of high-entropy positions eligible for weighted sampling when using entropy-guided targeting
+    ap.add_argument("--diversity_min_distance", type=int, default=20)                       # Minimum sequence distance between retained candidates when diversity-aware selection is enabled
+    ap.add_argument("--position_selection_strategy", type=str, default="random", choices=["random", "entropy"])
+    ap.add_argument("--position_pool_size", type=int, default=32)                           # Number of high-entropy positions eligible for weighted sampling when using entropy-guided targeting
+    ap.add_argument("--novelty_penalty_lambda", type=float, default=0.0)                    # Strength of the penalty for remaining too close to the seed embedding during candidate selection
+    ap.add_argument("--novelty_penalty_schedule", type=str, default="constant", choices=["constant", "linear"])
     ap.add_argument("--out_dir", type=str, default="results/design_runs")
     args = ap.parse_args()
 
@@ -436,6 +504,17 @@ def main():
     # Resolve valid amino-acid token ids once and reuse them for entropy-guided mutation targeting
     aa_token_ids = get_amino_acid_token_ids(tokenizer)
 
+    # Embed the seed sequence once and normalize it so repeated seed-similarity calculations are cheap
+    seed_embedding = embed_sequences(
+        sequences=[seed_sequence],
+        tokenizer=tokenizer,
+        model=esm_mlm,
+        batch_size=1,
+        max_aa=args.max_aa,
+        device=device,
+    )
+    seed_embedding_normalized = normalize_rows(seed_embedding)[0]         # [H]: One normalized seed embedding reused throughout the run
+
     # Track all generated candidates across rounds
     all_rows = []
 
@@ -457,84 +536,100 @@ def main():
     target_idx = label_classes.index(args.target_host)
 
     # Beam search optimization
-    # In each round, we mutate the parents (= sequences currently in the pool), score the children, and keep only the top k children to become the parents for the next round.
+    # In each round, we mutate the parents (= sequences currently in the pool), score the children, and keep only the top k (most diverse or not) children to become the parents for the next round.
     for round_idx in range(1, args.rounds + 1):                     # Iterate over the optimization rounds (= number of generations we run this process for)
         proposed_rows = []
         candidate_counter = 0
 
-        # Cache per-parent entropy scores so they are computed only once per parent sequence in each round
-        parent_position_scores_cache = {}
+        # Pre-compute parent entropy scores in batch once per round so all children of the same parent reuse the same position scores
+        if args.position_selection_strategy == "entropy":
+            parent_sequences = [parent["aa_sequence"] for parent in current_pool]         # List of the current parent sequences
+            parent_position_scores_list = compute_position_entropies_batch(               # Compute position entropies for each parent sequence
+                sequences=parent_sequences,
+                tokenizer=tokenizer,
+                model=esm_mlm,
+                max_aa=args.max_aa,
+                device=device,
+                aa_token_ids=aa_token_ids,
+                batch_size=args.batch_size,
+            )
+            parent_position_scores_cache = {                                              # Cache of parent position entropies
+                seq: scores for seq, scores in zip(parent_sequences, parent_position_scores_list)
+            }
+        else:
+            parent_position_scores_cache = {}
 
         # Generate mutations from the current pool
         for parent_rank, parent in enumerate(current_pool):         # For each parent in the pool
             parent_seq = parent["aa_sequence"]
+            positions_requests = []
+            n_mut_list = []
 
-            # Compute parent-specific position scores once and reuse them across all children of that parent
-            if args.position_selection_strategy == "entropy":                                       # If we're using entropy-guided targeting
-                if parent_seq not in parent_position_scores_cache:                                  # If the parent sequence is not in the cache
-                    parent_position_scores_cache[parent_seq] = compute_position_entropies(          # Compute the position entropies
-                        seq=parent_seq,
-                        tokenizer=tokenizer,
-                        model=esm_mlm,
-                        max_aa=args.max_aa,
-                        device=device,
-                        aa_token_ids=aa_token_ids,
-                    )
-                parent_position_scores = parent_position_scores_cache[parent_seq]                   # Get the (pre-computed) position entropies
-            else:                                                                                   # If we're not using entropy-guided targeting
-                parent_position_scores = None                                                       # Set the position entropies to None
+            # Build the requested mutation-position sets for this parent before running any proposal-model forward passes
+            for _ in range(args.candidates_per_round):                                      # Generate multiple mutated candidates (# candidates_per_round)
+                n_mut = rng.randint(args.min_mutations, args.max_mutations)                 # Generate a random number of mutations between min_mutations and max_mutations
+                n_mut_list.append(n_mut)                                                    # Save the number of mutations for this candidate
 
-            for _ in range(args.candidates_per_round):              # Generate multiple mutated candidates (# candidates_per_round)
-
-                # Generate a random number of mutations to happen 
-                n_mut = rng.randint(args.min_mutations, args.max_mutations)
-                
-                # Choose mutation positions (entropy-guided or random)
                 if args.position_selection_strategy == "entropy":
-                    positions = choose_mutation_positions_entropy_guided(
+                    parent_position_scores = parent_position_scores_cache[parent_seq]       # Reuse the entropy scores already computed for this parent sequence
+                    positions = choose_mutation_positions_entropy_guided(                   # Choose which sequence positions to mutate using entropy
                         seq=parent_seq,
                         n_mutations=n_mut,
                         position_scores=parent_position_scores,
                         rng=rng,
-                        candidate_pool_size=args.entropy_guided_position_pool_size,
+                        candidate_pool_size=args.position_pool_size,
                     )
                 else:
-                    positions = choose_mutation_positions_randomly(
+                    positions = choose_mutation_positions(
                         parent_seq,
                         n_mutations=n_mut,
                         rng=rng
                     )
 
-                # Propose a mutated sequence
-                mutated_seq, mutation_str = propose_esm_guided_mutation(
-                    seq=parent_seq,
-                    positions=positions,
+                positions_requests.append(positions)                                       # Save the requested mutation positions so they can be proposed in batched forward passes
+
+            # Run the masked mutation proposals for this parent in batches to reduce total runtime without changing model behavior
+            for start in range(0, len(positions_requests), args.proposal_batch_size):
+                batch_positions_requests = positions_requests[start : start + args.proposal_batch_size]
+
+                toks, valid_positions_list = build_masked_candidate_batch(
+                    parent_sequence=parent_seq,
+                    positions_list=batch_positions_requests,
                     tokenizer=tokenizer,
-                    model=esm_mlm,
                     max_aa=args.max_aa,
                     device=device,
+                )
+
+                with torch.inference_mode():
+                    outputs = esm_mlm(input_ids=toks["input_ids"], attention_mask=toks["attention_mask"])
+                    logits = outputs.logits                                             # [B, L, vocab]: Masked-token proposal logits for the whole parent-specific batch
+
+                mutated_sequences, mutation_strings = sample_mutations_from_batched_logits(
+                    parent_sequence=parent_seq,
+                    valid_positions_list=valid_positions_list,
+                    logits=logits,
+                    tokenizer=tokenizer,
                     top_k=args.proposal_top_k,
                     rng=rng,
                 )
 
-                # Skip if the mutation string is empty
-                if mutation_str == "":
-                    continue
+                for mutated_seq, mutation_str in zip(mutated_sequences, mutation_strings):
+                    if mutation_str == "":                                              # Skip if the mutation string is empty
+                        continue
 
-                # Add the mutated sequence to the proposed rows
-                proposed_rows.append(
-                    {
-                        "round": round_idx,
-                        "parent_rank": parent_rank,
-                        "virus_accession": virus_accession,
-                        "source_host": source_host,
-                        "protein_id": protein_id,
-                        "candidate_id": f"round{round_idx}_cand{candidate_counter}",
-                        "mutations": mutation_str,
-                        "aa_sequence": mutated_seq,
-                    }
-                )
-                candidate_counter += 1
+                    proposed_rows.append(
+                        {
+                            "round": round_idx,
+                            "parent_rank": parent_rank,
+                            "virus_accession": virus_accession,
+                            "source_host": source_host,
+                            "protein_id": protein_id,
+                            "candidate_id": f"round{round_idx}_cand{candidate_counter}",
+                            "mutations": mutation_str,
+                            "aa_sequence": mutated_seq,
+                        }
+                    )
+                    candidate_counter += 1
 
         # Check if there are any proposed rows
         if len(proposed_rows) == 0:
@@ -555,25 +650,42 @@ def main():
         )
 
         # Score each candidate with the trained linear probe
-        probs = clf.predict_proba(embeddings)               # Predicted probabilities for all the candidates
-        pred_idx = probs.argmax(axis=1)                     # Index of the predicted label (host)
-        pred_label = [label_classes[i] for i in pred_idx]   # Predicted label (host)
-        target_scores = probs[:, target_idx]                # Predicted score for the target host
+        probs = clf.predict_proba(embeddings)                                           # Predicted probabilities for all the candidates
+        pred_idx = probs.argmax(axis=1)                                                 # Index of the predicted label (host)
+        pred_label = [label_classes[i] for i in pred_idx]                               # Predicted label (host)
+        target_scores = probs[:, target_idx]                                            # Predicted score for the target host
 
-        proposed_df["pred_label"] = pred_label              # Add predicted labels column to the dataframe
-        proposed_df["target_host"] = args.target_host       # Add target host column
-        proposed_df["target_score"] = target_scores         # Add target score column
+        # Compute seed similarity columns once for all candidates in the round so novelty-aware selection is cheap
+        seed_cosine_similarity, seed_novelty_distance = compute_seed_similarity_columns(
+            candidate_embeddings=embeddings,
+            seed_embedding_normalized=seed_embedding_normalized,
+        )
+        novelty_penalty_weight = compute_novelty_penalty_weight(
+            round_idx=round_idx,
+            total_rounds=args.rounds,
+            novelty_penalty_lambda=args.novelty_penalty_lambda,
+            novelty_penalty_schedule=args.novelty_penalty_schedule,
+        )
+
+        proposed_df["pred_label"] = pred_label                                          # Add predicted labels column to the dataframe
+        proposed_df["target_host"] = args.target_host                                   # Add target host column
+        proposed_df["target_score"] = target_scores                                     # Add target score column
+        proposed_df["seed_cosine_similarity"] = seed_cosine_similarity                  # Add seed cosine similarity column so each candidate records how close it remains to the original seed embedding
+        proposed_df["seed_novelty_distance"] = seed_novelty_distance                    # Add seed novelty distance column so each candidate records how far it moved away from the original seed embedding
+        proposed_df["selection_score"] = proposed_df["target_score"] - (
+            novelty_penalty_weight * proposed_df["seed_cosine_similarity"]
+        )                                                                               # Add the final selection score column that optionally penalizes candidates for staying too close to the seed embedding
 
         # Count number of substitutions we introduced this round (through the number of semicolons in the mutation string) and add them as a new column to the dataframe
         proposed_df["n_mutations"] = proposed_df["mutations"].apply(lambda s: len(s.split(";")) if s else 0)
 
-        # Sort proposed candidates by target score descending and number of mutations ascending
+        # Sort proposed candidates by selection score descending, target score descending, and number of mutations ascending
         proposed_df = proposed_df.sort_values(
-            by=["target_score", "n_mutations"],
-            ascending=[False, True]
+            by=["selection_score", "target_score", "n_mutations"],
+            ascending=[False, False, True]
         ).reset_index(drop=True)
 
-        # Assign rank within the round after sorting by target score and mutation count
+        # Assign rank within the round after sorting by selection score, target score, and mutation count
         proposed_df["rank_in_round"] = range(1, len(proposed_df) + 1)
 
         # Save all proposed candidates for each round to csv
@@ -589,12 +701,12 @@ def main():
                 keep_top_k=args.keep_top_k,
                 min_distance=args.diversity_min_distance,
             )
-        # Else keep only the top k candidates based on target score of this round to seed the next round
+        # Else keep only the top k candidates based on selection score of this round to seed the next round
         else:
             selected_df = proposed_df.head(args.keep_top_k).copy()
 
         # Update the current pool by adding the selected candidates
-        current_pool = selected_df.to_dict(orient="records")    # Convert the dataframe to a list of dictionaries
+        current_pool = selected_df.to_dict(orient="records")
 
     # Raise error if no candidates were generated
     if len(all_rows) == 0:
@@ -604,10 +716,10 @@ def main():
     all_candidates_df = pd.concat(all_rows, axis=0).reset_index(drop=True)
     all_candidates_df.to_csv(out_dir / "all_candidates.csv", index=False)
 
-    # Rank all candidates across all rounds by score and mutation count.
+    # Rank all candidates across all rounds by selection score, target score, and mutation count
     all_candidates_ranked_df = (
         all_candidates_df
-        .sort_values(by=["target_score", "n_mutations"], ascending=[False, True])
+        .sort_values(by=["selection_score", "target_score", "n_mutations"], ascending=[False, False, True])
         .drop_duplicates(subset=["aa_sequence"])
         .reset_index(drop=True)
     )
@@ -646,7 +758,10 @@ def main():
         "diversity_on": args.diversity_on,
         "diversity_min_distance": args.diversity_min_distance,
         "position_selection_strategy": args.position_selection_strategy,
-        "entropy_guided_position_pool_size": args.entropy_guided_position_pool_size,
+        "position_pool_size": args.position_pool_size,
+        "proposal_batch_size": args.proposal_batch_size,
+        "novelty_penalty_lambda": args.novelty_penalty_lambda,
+        "novelty_penalty_schedule": args.novelty_penalty_schedule,
     }
     (out_dir / "run_metadata.json").write_text(json.dumps(metadata, indent=2))
 

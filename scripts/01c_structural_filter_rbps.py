@@ -4,8 +4,7 @@ from pathlib import Path
 import pandas as pd
 
 
-# High-confidence keep patterns:
-# proteins likely to be directly involved in host recognition / adsorption specificity
+# High-confidence keep patterns: proteins likely to be directly involved in host recognition / adsorption specificity
 KEEP_PATTERNS = [
     r"tail\s*fib(?:e|r)e",              # tail fiber / fibre
     r"tail\s*spike",                    # tail spike

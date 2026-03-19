@@ -55,11 +55,7 @@ def embed_sequences(
 
 
 def sequence_distance(seq_a: str, seq_b: str) -> int:
-    """ 
-    Count the differing positions between two protein sequences.
-    If protein lengths are equal the distance is the number of differing positions, 
-    otherwise the distance is the number of differing positions plus the difference in lengths.
-    """
+    """ Count the differing positions between two protein sequences. """
     # If the lengths are different, add the difference to the distance
     if len(seq_a) != len(seq_b):
         return abs(len(seq_a) - len(seq_b)) + sum(
@@ -71,81 +67,135 @@ def sequence_distance(seq_a: str, seq_b: str) -> int:
 
 def average_pairwise_distance(sequences: list[str]) -> float:
     """
-    Compute the mean pairwise sequence distance among a list of sequences and return it as a float.
+    Compute the mean pairwise sequence distance among a list of sequences.
     """
-    # If there are less than 2 sequences, return 0
-    if len(sequences) < 2:                                                          
+    if len(sequences) < 2:
         return 0.0
 
-    distances = []                                                                  # List to store pairwise distances
-    for i in range(len(sequences)):                                                 # Iterate over the sequences
-        for j in range(i + 1, len(sequences)):                                      # Iterate over the remaining sequences
-            distances.append(sequence_distance(sequences[i], sequences[j]))         # Compute the pairwise distance
-    return float(np.mean(distances)) if len(distances) > 0 else 0.0                 # Return the mean pairwise distance if there are pairwise distances, otherwise return 0
+    distances = []
+    for i in range(len(sequences)):
+        for j in range(i + 1, len(sequences)):
+            distances.append(sequence_distance(sequences[i], sequences[j]))
+    return float(np.mean(distances)) if len(distances) > 0 else 0.0
 
 
 def count_unique_mutation_positions(mutation_strings: list[str]) -> int:
     """
     Count the number of unique mutated sequence positions represented across the provided mutation strings.
     """
-    positions = set()                                                               # Set to store unique positions
-    for mutation_str in mutation_strings:                                           # Iterate over the mutation strings
-        if pd.isna(mutation_str) or mutation_str == "":                             # Skip missing or empty mutation strings
+    positions = set()
+    for mutation_str in mutation_strings:
+        if pd.isna(mutation_str) or mutation_str == "":
             continue
-        for token in str(mutation_str).split(";"):                                  # Iterate over the mutation tokens
-            token = token.strip()                                                   # Remove leading and trailing whitespace
-            if token == "":                                                         # Skip empty tokens
+        for token in str(mutation_str).split(";"):
+            token = token.strip()
+            if token == "":
                 continue
             # Example token: S456A
-            numeric_part = "".join(ch for ch in token if ch.isdigit())              # Extract the numeric part (e.g., "456")
-            if numeric_part != "":                                                  # If the numeric part is not empty
-                positions.add(int(numeric_part))                                    # Add the position to the set
-    return len(positions)                                                           # Return the number of unique positions in the set that were mutated
+            numeric_part = "".join(ch for ch in token if ch.isdigit())
+            if numeric_part != "":
+                positions.add(int(numeric_part))
+    return len(positions)
 
 
-def cosine_similarity_matrix(a: np.ndarray, b: np.ndarray) -> np.ndarray:
+def normalize_rows(x: np.ndarray) -> np.ndarray:
+    """ L2-normalize each embedding row for cosine-similarity computations. """
+    return x / np.clip(np.linalg.norm(x, axis=1, keepdims=True), 1e-12, None)
+
+
+def compute_chunked_nearest_neighbors(
+    query_embeddings_normalized: np.ndarray,
+    reference_embeddings_normalized: np.ndarray,
+    chunk_size: int,
+) -> tuple[np.ndarray, np.ndarray]:
     """
-    Compute cosine similarity between all rows of a and all rows of b. 
-    Returns a numpy array of shape [a.shape[0], b.shape[0]] with its first row corresponding to the first row of a and the first column to the first row of b.
+    Compute nearest-neighbor cosine similarity and reference index in chunks to reduce peak memory usage.
     """
-    a_norm = a / np.clip(np.linalg.norm(a, axis=1, keepdims=True), 1e-12, None)     # Normalize each row of a by its L2 norm.
-    b_norm = b / np.clip(np.linalg.norm(b, axis=1, keepdims=True), 1e-12, None)     # Normalize each row of b by its L2 norm.
-    return a_norm @ b_norm.T                                                        # Compute the cosine similarity between each row of a and each row of b
+    nn_idx_all = []
+    nn_sim_all = []
+
+    # Process query embeddings in chunks so cosine-similarity calculation stays memory-efficient
+    for start in range(0, len(query_embeddings_normalized), chunk_size):
+        query_chunk = query_embeddings_normalized[start : start + chunk_size]            # [chunk, H]: Slice the next chunk of normalized query embeddings
+        sim_chunk = query_chunk @ reference_embeddings_normalized.T                       # [chunk, N_ref]: Cosine similarity becomes a matrix multiplication because both matrices are already normalized
+        nn_idx_chunk = sim_chunk.argmax(axis=1)                                           # [chunk]: Index of the nearest reference sequence for every query sequence in this chunk
+        nn_sim_chunk = sim_chunk[np.arange(len(query_chunk)), nn_idx_chunk]               # [chunk]: Nearest-neighbor cosine similarity for every query sequence in this chunk
+        nn_idx_all.append(nn_idx_chunk)
+        nn_sim_all.append(nn_sim_chunk)
+
+    return np.concatenate(nn_idx_all), np.concatenate(nn_sim_all)
 
 
 def compute_nearest_neighbor_novelty(
     top_df: pd.DataFrame,
-    reference_df: pd.DataFrame,
+    reference_df: pd.DataFrame | None,
     esm_model: str,
     batch_size: int,
     max_aa: int,
+    cached_reference_embeddings_npy: str | None,
+    cached_reference_index_csv: str | None,
+    similarity_chunk_size: int,
 ) -> pd.DataFrame:
     """
-    Compute nearest-neighbor novelty in ESM embedding space against a reference dataset of sequences.
+    Compute nearest-neighbor novelty in ESM embedding space against a reference dataset.
+
     Returns a dataframe with one row per top candidate.
     """
     # Keep only rows with valid sequences
-    top_valid = top_df.dropna(subset=["aa_sequence"]).copy().reset_index(drop=True)         # Drop rows with missing sequence strings from top candidates
-    ref_valid = reference_df.dropna(subset=["aa_sequence"]).copy().reset_index(drop=True)   # Drop rows with missing sequence strings from reference dataset
+    top_valid = top_df.dropna(subset=["aa_sequence"]).copy().reset_index(drop=True)
 
-    # If there are no valid sequences, raise an error
     if len(top_valid) == 0:
         raise ValueError("No valid candidate sequences found for novelty calculation.")
-    if len(ref_valid) == 0:
-        raise ValueError("No valid reference sequences found for novelty calculation.")
+
+    # Load cached normalized reference embeddings if available, otherwise build them from the provided reference dataframe
+    if cached_reference_embeddings_npy is not None and cached_reference_index_csv is not None:
+        cached_reference_embeddings_path = Path(cached_reference_embeddings_npy)
+        cached_reference_index_path = Path(cached_reference_index_csv)
+
+        if not cached_reference_embeddings_path.exists():
+            raise FileNotFoundError(f"Missing file: {cached_reference_embeddings_path}")
+        if not cached_reference_index_path.exists():
+            raise FileNotFoundError(f"Missing file: {cached_reference_index_path}")
+
+        ref_unique = pd.read_csv(cached_reference_index_path).dropna(subset=["aa_sequence"]).reset_index(drop=True)          # Load the cached reference index aligned to the cached embeddings
+        ref_emb_normalized = np.load(cached_reference_embeddings_path).astype(np.float32)                                     # Load the cached normalized reference embeddings from disk
+    else:
+        if reference_df is None:
+            raise ValueError("Either a novelty reference CSV or cached reference embeddings must be provided.")
+
+        ref_valid = reference_df.dropna(subset=["aa_sequence"]).copy().reset_index(drop=True)
+        if len(ref_valid) == 0:
+            raise ValueError("No valid reference sequences found for novelty calculation.")
+
+        ref_unique = ref_valid.drop_duplicates(subset=["aa_sequence"]).reset_index(drop=True)                                 # Deduplicate reference sequences so novelty computation is not slowed by exact duplicates
+
+        device = "cuda" if torch.cuda.is_available() else "cpu"
+
+        # Load ESM MLM once and reuse it for novelty calculation
+        tokenizer = AutoTokenizer.from_pretrained(esm_model, do_lower_case=False)
+        esm_mlm = EsmForMaskedLM.from_pretrained(esm_model)
+        esm_mlm.to(device)
+        esm_mlm.eval()
+
+        ref_emb = embed_sequences(
+            sequences=ref_unique["aa_sequence"].tolist(),
+            tokenizer=tokenizer,
+            model=esm_mlm,
+            batch_size=batch_size,
+            max_aa=max_aa,
+            device=device,
+        )
+        ref_emb_normalized = normalize_rows(ref_emb).astype(np.float32)                                                       # Normalize the reference embeddings once so later cosine similarities are just dot products
 
     device = "cuda" if torch.cuda.is_available() else "cpu"
 
-    # Load ESM MLM once and reuse it for novelty calculation
+    # Load ESM MLM once and reuse it for candidate novelty calculation
     tokenizer = AutoTokenizer.from_pretrained(esm_model, do_lower_case=False)
     esm_mlm = EsmForMaskedLM.from_pretrained(esm_model)
     esm_mlm.to(device)
     esm_mlm.eval()
 
-    # Drop duplicate reference sequences so novelty computation is not slowed by exact duplicates
-    ref_unique = ref_valid.drop_duplicates(subset=["aa_sequence"]).reset_index(drop=True)
-
-    # Embed candidates and reference sequences
+    # Embed top candidates
     top_emb = embed_sequences(
         sequences=top_valid["aa_sequence"].tolist(),
         tokenizer=tokenizer,
@@ -154,23 +204,16 @@ def compute_nearest_neighbor_novelty(
         max_aa=max_aa,
         device=device,
     )
+    top_emb_normalized = normalize_rows(top_emb).astype(np.float32)                                                            # Normalize candidate embeddings once before chunked cosine similarity calculation
 
-    ref_emb = embed_sequences(
-        sequences=ref_unique["aa_sequence"].tolist(),
-        tokenizer=tokenizer,
-        model=esm_mlm,
-        batch_size=batch_size,
-        max_aa=max_aa,
-        device=device,
+    # Compute nearest neighbors with chunked cosine similarity to reduce peak memory usage
+    nn_idx, nn_sim = compute_chunked_nearest_neighbors(
+        query_embeddings_normalized=top_emb_normalized,
+        reference_embeddings_normalized=ref_emb_normalized,
+        chunk_size=similarity_chunk_size,
     )
+    novelty_distance = 1.0 - nn_sim
 
-    # Compute cosine similarity matrix between top and reference embeddings, find nearest neighbors in the reference dataset, and compute novelty distance
-    sim = cosine_similarity_matrix(top_emb, ref_emb)        
-    nn_idx = sim.argmax(axis=1)                                                     # Get indices of nearest neighbors in the reference dataset
-    nn_sim = sim[np.arange(len(top_valid)), nn_idx]                                 # Get cosine similarities of nearest neighbors
-    novelty_distance = 1.0 - nn_sim                                                 # Compute novelty distance
-
-    # Create a dataframe with one row per top candidate and columns for nearest neighbor reference index, cosine similarity, and novelty distance
     nn_df = pd.DataFrame(
         {
             "candidate_id": top_valid["candidate_id"].tolist(),
@@ -191,10 +234,13 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--run_dir", type=str, required=True)
     ap.add_argument("--top_k", type=int, default=10)
-    ap.add_argument("--novelty_reference_csv", type=str, default=None)                      # Reference dataset for novelty calculation
-    ap.add_argument("--esm_model", type=str, default="facebook/esm2_t33_650M_UR50D")        
-    ap.add_argument("--batch_size", type=int, default=4)                                    # Batch size for ESM embeddings
+    ap.add_argument("--novelty_reference_csv", type=str, default=None)
+    ap.add_argument("--cached_reference_embeddings_npy", type=str, default=None)
+    ap.add_argument("--cached_reference_index_csv", type=str, default=None)
+    ap.add_argument("--esm_model", type=str, default="facebook/esm2_t33_650M_UR50D")
+    ap.add_argument("--batch_size", type=int, default=8)
     ap.add_argument("--max_aa", type=int, default=1022)
+    ap.add_argument("--similarity_chunk_size", type=int, default=64)
     args = ap.parse_args()
 
     # Load data
@@ -216,10 +262,10 @@ def main():
     all_df = pd.read_csv(all_csv)
     metadata = json.loads(metadata_json.read_text())
 
-    # Count the distribution of true labels across the top candidates
-    pred_label_counts = (                                          
-        top_df["pred_label"]                 
-        .value_counts()                      
+    # Create summary files and preview
+    pred_label_counts = (
+        top_df["pred_label"]
+        .value_counts()
         .rename_axis("pred_label")
         .reset_index(name="count")
     )
@@ -233,7 +279,7 @@ def main():
         .reset_index(name="count")
     )
 
-    # Compute summary statistics for target scores in the top candidates: min, mean, median, max
+    # Compute summary statistics
     score_summary = pd.DataFrame(
         {
             "metric": ["min", "mean", "median", "max"],
@@ -243,51 +289,90 @@ def main():
                 float(top_df["target_score"].median()),
                 float(top_df["target_score"].max()),
             ],
+            "selection_score": [
+                float(top_df["selection_score"].min()) if "selection_score" in top_df.columns else float("nan"),
+                float(top_df["selection_score"].mean()) if "selection_score" in top_df.columns else float("nan"),
+                float(top_df["selection_score"].median()) if "selection_score" in top_df.columns else float("nan"),
+                float(top_df["selection_score"].max()) if "selection_score" in top_df.columns else float("nan"),
+            ],
         }
     )
 
-    # Compute additional diversity-focused metrics for the top candidates
-    top_sequences = top_df["aa_sequence"].dropna().astype(str).tolist() if "aa_sequence" in top_df.columns else []                                                  # If aa_sequence column is in the top candidates dataframe, convert it to a list of strings
-    avg_pairwise_dist = average_pairwise_distance(top_sequences)                                                                                                    # Compute average pairwise sequence distance among the top candidates
-    unique_mutation_site_count = count_unique_mutation_positions(top_df["mutations"].fillna("").astype(str).tolist()) if "mutations" in top_df.columns else 0       # If mutations column is in the top candidates dataframe, count unique mutation positions among the top candidates
+    # Compute additional diversity-focused metrics
+    top_sequences = top_df["aa_sequence"].dropna().astype(str).tolist() if "aa_sequence" in top_df.columns else []
+    avg_pairwise_dist = average_pairwise_distance(top_sequences)
+    unique_mutation_site_count = count_unique_mutation_positions(top_df["mutations"].fillna("").astype(str).tolist()) if "mutations" in top_df.columns else 0
 
-    # Create a dataframe with one row per top candidate and columns for average pairwise distance and unique mutation site count
-    diversity_summary = pd.DataFrame(                                                                           
+    diversity_summary = pd.DataFrame(
         {
             "metric": ["avg_pairwise_distance_top_candidates", "unique_mutation_site_count_top_candidates"],
             "value": [float(avg_pairwise_dist), int(unique_mutation_site_count)],
         }
     )
 
-    # Save summary files for predicted labels, mutation counts, target scores, and diversity
+    seed_similarity_summary = None
+    if "seed_cosine_similarity" in top_df.columns and "seed_novelty_distance" in top_df.columns:
+        seed_similarity_summary = pd.DataFrame(
+            {
+                "metric": [
+                    "min_seed_cosine_similarity",
+                    "mean_seed_cosine_similarity",
+                    "median_seed_cosine_similarity",
+                    "max_seed_cosine_similarity",
+                    "min_seed_novelty_distance",
+                    "mean_seed_novelty_distance",
+                    "median_seed_novelty_distance",
+                    "max_seed_novelty_distance",
+                ],
+                "value": [
+                    float(top_df["seed_cosine_similarity"].min()),
+                    float(top_df["seed_cosine_similarity"].mean()),
+                    float(top_df["seed_cosine_similarity"].median()),
+                    float(top_df["seed_cosine_similarity"].max()),
+                    float(top_df["seed_novelty_distance"].min()),
+                    float(top_df["seed_novelty_distance"].mean()),
+                    float(top_df["seed_novelty_distance"].median()),
+                    float(top_df["seed_novelty_distance"].max()),
+                ],
+            }
+        )                                                                                 # Summarize how close the final top candidates remain to the original seed embedding if the optimizer wrote those columns
+
+    # Save summary files
     pred_label_counts.to_csv(run_dir / "pred_label_counts.csv", index=False)
     mutation_count_counts.to_csv(run_dir / "mutation_count_counts.csv", index=False)
     score_summary.to_csv(run_dir / "target_score_summary.csv", index=False)
     diversity_summary.to_csv(run_dir / "diversity_summary.csv", index=False)
+    if seed_similarity_summary is not None:
+        seed_similarity_summary.to_csv(run_dir / "seed_similarity_summary.csv", index=False)
 
     novelty_df = None
     novelty_summary = None
 
-    # Optionally compute nearest-neighbor novelty of the top candidates against a reference dataset
-    if args.novelty_reference_csv is not None:
-        novelty_reference_csv = Path(args.novelty_reference_csv)
-        if not novelty_reference_csv.exists():
-            raise FileNotFoundError(f"Missing file: {novelty_reference_csv}")
+    # Optionally compute nearest-neighbor novelty against a reference dataset or cached novelty-reference embeddings
+    if (
+        args.novelty_reference_csv is not None
+        or (args.cached_reference_embeddings_npy is not None and args.cached_reference_index_csv is not None)
+    ):
+        reference_df = None
+        if args.novelty_reference_csv is not None:
+            novelty_reference_csv = Path(args.novelty_reference_csv)
+            if not novelty_reference_csv.exists():
+                raise FileNotFoundError(f"Missing file: {novelty_reference_csv}")
+            reference_df = pd.read_csv(novelty_reference_csv)
 
-        reference_df = pd.read_csv(novelty_reference_csv)
-        
-        # Compute nearest-neighbor novelty in ESM embedding space
         novelty_df = compute_nearest_neighbor_novelty(
             top_df=top_df,
             reference_df=reference_df,
             esm_model=args.esm_model,
             batch_size=args.batch_size,
             max_aa=args.max_aa,
+            cached_reference_embeddings_npy=args.cached_reference_embeddings_npy,
+            cached_reference_index_csv=args.cached_reference_index_csv,
+            similarity_chunk_size=args.similarity_chunk_size,
         )
-        # Save nearest-neighbor novelty dataframe
+
         novelty_df.to_csv(run_dir / "nearest_neighbor_novelty.csv", index=False)
 
-        # Compute summary statistics for nearest-neighbor novelty
         novelty_summary = pd.DataFrame(
             {
                 "metric": [
@@ -323,6 +408,9 @@ def main():
             "target_host",
             "pred_label",
             "target_score",
+            "selection_score",
+            "seed_cosine_similarity",
+            "seed_novelty_distance",
             "mutations",
             "n_mutations",
         ] if c in top_df.columns
@@ -350,9 +438,12 @@ def main():
     lines.append(f"- Total candidates evaluated: `{metadata.get('n_total_candidates')}`")
     lines.append(f"- Top candidates saved: `{metadata.get('n_top_candidates_saved')}`")
     lines.append(f"- Diversity enabled: `{metadata.get('diversity_on', False)}`")
-    lines.append(f"- Diversity min distance: `{metadata.get('diversity_min_distance', 'N/A')}`")                
+    lines.append(f"- Diversity min distance: `{metadata.get('diversity_min_distance', 'N/A')}`")
     lines.append(f"- Position selection strategy: `{metadata.get('position_selection_strategy', 'random')}`")
     lines.append(f"- Position pool size: `{metadata.get('position_pool_size', 'N/A')}`")
+    lines.append(f"- Proposal batch size: `{metadata.get('proposal_batch_size', 'N/A')}`")
+    lines.append(f"- Novelty penalty lambda: `{metadata.get('novelty_penalty_lambda', 0.0)}`")
+    lines.append(f"- Novelty penalty schedule: `{metadata.get('novelty_penalty_schedule', 'constant')}`")
     lines.append("")
 
     lines.append("## Target score summary")
@@ -375,7 +466,12 @@ def main():
     lines.append(diversity_summary.to_markdown(index=False))
     lines.append("")
 
-    # Add nearest-neighbor novelty summary
+    if seed_similarity_summary is not None:
+        lines.append("## Seed similarity summary")
+        lines.append("")
+        lines.append(seed_similarity_summary.to_markdown(index=False))
+        lines.append("")
+
     if novelty_summary is not None:
         lines.append("## Nearest-neighbor novelty summary")
         lines.append("")
@@ -411,6 +507,8 @@ def main():
     print(f"✅ Saved: {run_dir / 'mutation_count_counts.csv'}")
     print(f"✅ Saved: {run_dir / 'target_score_summary.csv'}")
     print(f"✅ Saved: {run_dir / 'diversity_summary.csv'}")
+    if seed_similarity_summary is not None:
+        print(f"✅ Saved: {run_dir / 'seed_similarity_summary.csv'}")
     if novelty_df is not None:
         print(f"✅ Saved: {run_dir / 'nearest_neighbor_novelty.csv'}")
         print(f"✅ Saved: {run_dir / 'novelty_summary.csv'}")

@@ -63,7 +63,7 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--reference_csv", type=str, required=True)
     ap.add_argument("--esm_model", type=str, default="facebook/esm2_t33_650M_UR50D")
-    ap.add_argument("--batch_size", type=int, default=8)
+    ap.add_argument("--batch_size", type=int, default=8)                                # Batch size for sequence embedding
     ap.add_argument("--max_aa", type=int, default=1022)
     ap.add_argument("--out_embeddings_npy", type=str, required=True)
     ap.add_argument("--out_index_csv", type=str, required=True)

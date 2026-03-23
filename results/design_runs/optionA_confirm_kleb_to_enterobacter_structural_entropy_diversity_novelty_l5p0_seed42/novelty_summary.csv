@@ -1,0 +1,9 @@
+metric,value
+min_novelty_distance,0.0005320310592651367
+mean_novelty_distance,0.0009520518779754639
+median_novelty_distance,0.0009524822235107422
+max_novelty_distance,0.0014970898628234863
+min_nearest_neighbor_cosine_similarity,0.9985029101371765
+mean_nearest_neighbor_cosine_similarity,0.9990479481220246
+median_nearest_neighbor_cosine_similarity,0.9990475177764893
+max_nearest_neighbor_cosine_similarity,0.9994679689407349

@@ -109,17 +109,18 @@ def compute_chunked_nearest_neighbors(
     chunk_size: int,
 ) -> tuple[np.ndarray, np.ndarray]:
     """
-    Compute nearest-neighbor cosine similarity and reference index in chunks to reduce peak memory usage.
+    Given the embeddings of query and reference sequences, compute nearest-neighbor cosine similarity between candidate sequence in chunks and the entire reference dataset to reduce peak memory usage. 
+    Returns the nearest neighbor index and cosine similarity for each query (candidate) embedding in the chunks.
     """
     nn_idx_all = []
     nn_sim_all = []
 
-    # Process query embeddings in chunks so cosine-similarity calculation stays memory-efficient
-    for start in range(0, len(query_embeddings_normalized), chunk_size):
-        query_chunk = query_embeddings_normalized[start : start + chunk_size]            # [chunk, H]: Slice the next chunk of normalized query embeddings
-        sim_chunk = query_chunk @ reference_embeddings_normalized.T                       # [chunk, N_ref]: Cosine similarity becomes a matrix multiplication because both matrices are already normalized
-        nn_idx_chunk = sim_chunk.argmax(axis=1)                                           # [chunk]: Index of the nearest reference sequence for every query sequence in this chunk
-        nn_sim_chunk = sim_chunk[np.arange(len(query_chunk)), nn_idx_chunk]               # [chunk]: Nearest-neighbor cosine similarity for every query sequence in this chunk
+    # Process query (candidate) embeddings in chunks so cosine-similarity calculation stays memory-efficient
+    for start in range(0, len(query_embeddings_normalized), chunk_size):                # Iterate over chunks
+        query_chunk = query_embeddings_normalized[start : start + chunk_size]           # [chunk, H]: Slice the next chunk of normalized query (candidate) embeddings
+        sim_chunk = query_chunk @ reference_embeddings_normalized.T                     # [chunk, N_ref]: Cosine similarity beteen the chunk of query embeddings and all reference embeddings --> Just matrix multiplication because both matrices are already normalized.
+        nn_idx_chunk = sim_chunk.argmax(axis=1)                                         # [chunk]: Index of the nearest-neighbor reference sequence for every query sequence in this chunk
+        nn_sim_chunk = sim_chunk[np.arange(len(query_chunk)), nn_idx_chunk]             # [chunk]: Nearest-neighbor cosine similarity for every query sequence in this chunk
         nn_idx_all.append(nn_idx_chunk)
         nn_sim_all.append(nn_sim_chunk)
 
@@ -137,9 +138,8 @@ def compute_nearest_neighbor_novelty(
     similarity_chunk_size: int,
 ) -> pd.DataFrame:
     """
-    Compute nearest-neighbor novelty in ESM embedding space against a reference dataset.
-
-    Returns a dataframe with one row per top candidate.
+    Compute nearest-neighbor novelty in ESM embedding space between the top candidates and a reference dataset.
+    Returns a dataframe with one row per top candidate depicting the nearest-neighbor cosine similarity and novelty distance between it and the reference dataset.
     """
     # Keep only rows with valid sequences
     top_valid = top_df.dropna(subset=["aa_sequence"]).copy().reset_index(drop=True)

@@ -1,0 +1,4 @@
+target_host,method_family,n_selected,mean_target_score,mean_strict_manifold,mean_pll_delta
+Acinetobacter,diversity,4,0.1384840620649285,0.9986241161823272,0.4356298446655273
+Enterobacter,diversity,4,0.600174966536467,0.998271271586418,1.9387701749801636
+Enterobacter,diversity_plus_novelty,4,0.6014742985201821,0.9982780814170836,1.9368160963058472

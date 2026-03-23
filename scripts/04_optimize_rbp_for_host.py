@@ -163,10 +163,10 @@ def compute_position_entropies_batch(
             for batch_idx, seq in enumerate(batch):
                 seq_len = len(seq)                                                      # Real amino-acid sequence length
                 aa_logits = logits[batch_idx, 1 : seq_len + 1, aa_token_ids]            # [seq_len, 20]: Restrict the logits to valid one-letter amino-acid tokens only
-                aa_probs = torch.softmax(aa_logits, dim=-1)                              # [seq_len, 20]: Convert the logits to probabilities
-                aa_log_probs = torch.log(aa_probs.clamp(min=1e-12))                      # [seq_len, 20]: Stable log-probabilities for the entropy formula
-                entropies = -(aa_probs * aa_log_probs).sum(dim=-1)                       # [seq_len]: Shannon entropy per residue position
-                all_entropies.append(entropies.detach().cpu().numpy())                   # Save one entropy vector per sequence in CPU memory
+                aa_probs = torch.softmax(aa_logits, dim=-1)                             # [seq_len, 20]: Convert the logits to probabilities
+                aa_log_probs = torch.log(aa_probs.clamp(min=1e-12))                     # [seq_len, 20]: Stable log-probabilities for the entropy formula
+                entropies = -(aa_probs * aa_log_probs).sum(dim=-1)                      # [seq_len]: Shannon entropy per residue position
+                all_entropies.append(entropies.detach().cpu().numpy())                  # Save one entropy vector per sequence in CPU memory
 
     return all_entropies
 
@@ -182,8 +182,8 @@ def choose_mutation_positions_entropy_guided(
     Choose mutation positions using uncertainty / entropy scores.
 
     Strategy:
-    1. rank positions by entropy
-    2. keep only the top candidate_pool_size uncertain positions
+    1. rank sequence positions by entropy
+    2. keep only the top uncertain positions equal to candidate_pool_size
     3. sample without replacement from that pool using entropy-weighted probabilities
     """
     # If n_mutations is zero, return the original sequence (Adapted for this function: return empty list)
@@ -200,31 +200,31 @@ def choose_mutation_positions_entropy_guided(
     if len(position_scores) != len(seq):
         return choose_mutation_positions(seq=seq, n_mutations=n_mutations, rng=rng)
 
-    # Rank positions by entropy descending and keep a candidate pool of the most uncertain positions
+    # Rank positions by entropy descending and keep a pool of the most uncertain positions equal to candidate_pool_size
     ranked_positions = np.argsort(-position_scores).tolist()
     pool_size = min(max(candidate_pool_size, n_mutations), len(ranked_positions))
     candidate_positions = ranked_positions[:pool_size]
 
     # Convert candidate scores to positive sampling weights
-    candidate_scores = np.array([max(float(position_scores[p]), 1e-8) for p in candidate_positions], dtype=float)
-    candidate_scores = candidate_scores / candidate_scores.sum()
+    candidate_scores = np.array([max(float(position_scores[p]), 1e-8) for p in candidate_positions], dtype=float)   # Ensure non-zero scores
+    candidate_scores = candidate_scores / candidate_scores.sum()                                                    # Normalize
 
     selected_positions = []
     remaining_positions = candidate_positions.copy()
     remaining_scores = candidate_scores.copy()
 
-    # Sample without replacement using entropy-weighted probabilities
-    while len(selected_positions) < n_mutations and len(remaining_positions) > 0:
-        chosen_idx = rng.choices(
+    # Sample from the candidate pool without replacement using entropy-weighted probabilities
+    while len(selected_positions) < n_mutations and len(remaining_positions) > 0:       # As long as there are positions left in the pool
+        chosen_idx = rng.choices(                                                       # Sample without replacement
             population=list(range(len(remaining_positions))),
             weights=remaining_scores.tolist(),
             k=1,
-        )[0]
-        selected_positions.append(remaining_positions.pop(chosen_idx))
-        remaining_scores = np.delete(remaining_scores, chosen_idx)
+        )[0]                                                                            # Get the index of the chosen position
+        selected_positions.append(remaining_positions.pop(chosen_idx))                  # Add the chosen position to the selected positions
+        remaining_scores = np.delete(remaining_scores, chosen_idx)                      # Remove the chosen position from the pool
 
-        if len(remaining_scores) > 0:
-            remaining_scores = remaining_scores / remaining_scores.sum()
+        if len(remaining_scores) > 0:                                                   # If there are still positions left in the pool
+            remaining_scores = remaining_scores / remaining_scores.sum()                # Normalize the remaining scores
 
     return sorted(selected_positions)
 
@@ -543,8 +543,8 @@ def main():
 
         # Pre-compute parent entropy scores in batch once per round so all children of the same parent reuse the same position scores
         if args.position_selection_strategy == "entropy":
-            parent_sequences = [parent["aa_sequence"] for parent in current_pool]         # List of the current parent sequences
-            parent_position_scores_list = compute_position_entropies_batch(               # Compute position entropies for each parent sequence
+            parent_sequences = [parent["aa_sequence"] for parent in current_pool]         # List the current parent sequences
+            parent_position_scores_list = compute_position_entropies_batch(               # Compute position entropies for each amino acid position for all parent sequences in parallel
                 sequences=parent_sequences,
                 tokenizer=tokenizer,
                 model=esm_mlm,
@@ -553,25 +553,25 @@ def main():
                 aa_token_ids=aa_token_ids,
                 batch_size=args.batch_size,
             )
-            parent_position_scores_cache = {                                              # Cache of parent position entropies
+            parent_position_scores_cache = {                                              # Cache is a dict of aa parent position entropies; shape: {parent_seq: {pos: entropy}}
                 seq: scores for seq, scores in zip(parent_sequences, parent_position_scores_list)
             }
         else:
-            parent_position_scores_cache = {}
+            parent_position_scores_cache = {}                                             # If position selection strategy is not entropy, cache dict is empty 
 
-        # Generate mutations from the current pool
+        # Generate mutations for each parent in the current pool
         for parent_rank, parent in enumerate(current_pool):         # For each parent in the pool
             parent_seq = parent["aa_sequence"]
             positions_requests = []
             n_mut_list = []
 
-            # Build the requested mutation-position sets for this parent before running any proposal-model forward passes
-            for _ in range(args.candidates_per_round):                                      # Generate multiple mutated candidates (# candidates_per_round)
-                n_mut = rng.randint(args.min_mutations, args.max_mutations)                 # Generate a random number of mutations between min_mutations and max_mutations
+            # Build the requested mutation-position sets (= which positions to mutate) for this parent before running any proposal-model forward passes
+            for _ in range(args.candidates_per_round):                                      # Loop to generate multiple mutated candidates (# candidates_per_round)
+                n_mut = rng.randint(args.min_mutations, args.max_mutations)                 # Select randomly the number of mutations between min_mutations and max_mutations
                 n_mut_list.append(n_mut)                                                    # Save the number of mutations for this candidate
 
                 if args.position_selection_strategy == "entropy":
-                    parent_position_scores = parent_position_scores_cache[parent_seq]       # Reuse the entropy scores already computed for this parent sequence
+                    parent_position_scores = parent_position_scores_cache[parent_seq]       # Reuse the entropy scores already computed for this parent sequence (from cache)
                     positions = choose_mutation_positions_entropy_guided(                   # Choose which sequence positions to mutate using entropy
                         seq=parent_seq,
                         n_mutations=n_mut,
@@ -579,32 +579,33 @@ def main():
                         rng=rng,
                         candidate_pool_size=args.position_pool_size,
                     )
-                else:
+                else:                                                                       # If position selection strategy is not entropy, choose positions randomly                        
                     positions = choose_mutation_positions(
                         parent_seq,
                         n_mutations=n_mut,
                         rng=rng
                     )
 
-                positions_requests.append(positions)                                       # Save the requested mutation positions so they can be proposed in batched forward passes
+                positions_requests.append(positions)                                        # Save the requested mutation positions in a list so they can be proposed in batched forward passes
 
-            # Run the masked mutation proposals for this parent in batches to reduce total runtime without changing model behavior
-            for start in range(0, len(positions_requests), args.proposal_batch_size):
-                batch_positions_requests = positions_requests[start : start + args.proposal_batch_size]
+            # Run the masked mutation proposals for this parent in batches
+            for start in range(0, len(positions_requests), args.proposal_batch_size):                           # For each batch of mutation-position sets
+                batch_positions_requests = positions_requests[start : start + args.proposal_batch_size]         # Get the mutation-position sets for this batch
 
-                toks, valid_positions_list = build_masked_candidate_batch(
-                    parent_sequence=parent_seq,
+                toks, valid_positions_list = build_masked_candidate_batch(                                      # Build a batch of masked tokenized sequences
+                    parent_sequence=parent_seq,                                                                 # Each row in the batch is a single parent sequence with one of the requested mutation-positions masked
                     positions_list=batch_positions_requests,
                     tokenizer=tokenizer,
                     max_aa=args.max_aa,
                     device=device,
-                )
+                )                                                                                               # toks: [B=proposal_batch_size, max_aa] tensor matrix of differently masked tokenized sequences, valid_positions_list: mutation positions tracking list aligned with the returned batch rows
 
+                # Run the proposal-model forward pass for the whole parent-specific batch and get the masked-token proposal logits
                 with torch.inference_mode():
-                    outputs = esm_mlm(input_ids=toks["input_ids"], attention_mask=toks["attention_mask"])
-                    logits = outputs.logits                                             # [B, L, vocab]: Masked-token proposal logits for the whole parent-specific batch
+                    outputs = esm_mlm(input_ids=toks["input_ids"], attention_mask=toks["attention_mask"])       
+                    logits = outputs.logits                                                                     # [B, L, vocab]: Masked-token proposal logits for the whole parent-specific batch
 
-                mutated_sequences, mutation_strings = sample_mutations_from_batched_logits(
+                mutated_sequences, mutation_strings = sample_mutations_from_batched_logits(                     # Convert each of the batch rows of masked-token logits into mutated sequences and mutation strings
                     parent_sequence=parent_seq,
                     valid_positions_list=valid_positions_list,
                     logits=logits,

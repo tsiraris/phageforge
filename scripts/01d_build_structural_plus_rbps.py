@@ -152,17 +152,17 @@ def main():
     review_mask = df["product_norm"].apply(lambda s: matches_any_pattern(s, review_patterns))                               # Review-only set for borderline generic annotations
     exclude_mask = df["product_norm"].apply(lambda s: matches_any_pattern(s, exclude_patterns))                             # Exclusion set for clearly non-target annotations
 
-    # Structural plus dataset will keep the original keep patterns and the expanded keep patterns and not the review patterns
+    # Structural plus dataset mask: keep the original keep patterns and the expanded keep patterns and not the review patterns
     structural_plus_mask = (keep_mask | expanded_keep_mask) & (~exclude_mask)                                               
     
-    # Review dataset will keep the review patterns and not the structural_plus patterns or the exclusion patterns
+    # Review dataset mask: keep the review patterns and not the structural_plus patterns or the exclusion patterns
     review_output_mask = review_mask & (~structural_plus_mask) & (~exclude_mask)                                            
 
-    # Create the final datasets
+    # Create the structural_plus and review dataframes
     structural_plus_df = df[structural_plus_mask].copy().reset_index(drop=True)                 # Final structural_plus dataset: broader and higher-recall than structural while still curated
     review_df = df[review_output_mask].copy().reset_index(drop=True)                            # Review dataset: borderline proteins worth inspecting manually but not included in the main structural_plus set
 
-    # Drop the helper normalization column before saving the final datasets
+    # Drop the helper normalization column before saving the dataframes
     if "product_norm" in structural_plus_df.columns:
         structural_plus_df = structural_plus_df.drop(columns=["product_norm"])                  
     if "product_norm" in review_df.columns:

@@ -1,0 +1,12 @@
+{
+  "seed_protein_id": "QFR57578.1",
+  "seed_source_host": "Klebsiella",
+  "target_host": "Enterobacter",
+  "seed_pred_label": "Enterobacter",
+  "seed_target_score": 0.402655138922809,
+  "best_candidate_target_score": 0.6443516525528517,
+  "best_delta_target_score": 0.24169651363004263,
+  "mean_delta_target_score_top_k": 0.22111881497220195,
+  "mean_distance_from_seed_top_k": 11.3,
+  "top_k": 10
+}

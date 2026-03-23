@@ -1,0 +1,12 @@
+{
+  "repo_root": "/content/phageforge_extracted/phageforge",
+  "runs_dir": "/content/phageforge_extracted/phageforge/results/design_runs",
+  "n_all_candidates": 4800,
+  "n_unique_candidate_sequences": 1587,
+  "strict_reference_size": 154,
+  "structural_reference_size": 154,
+  "structural_plus_reference_size": 1420,
+  "device": "cuda",
+  "esm_model": "facebook/esm2_t33_650M_UR50D",
+  "top_k_density": 5
+}

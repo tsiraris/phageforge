@@ -1,0 +1,12 @@
+{
+  "seed_protein_id": "QFR57578.1",
+  "seed_source_host": "Klebsiella",
+  "target_host": "Acinetobacter",
+  "seed_pred_label": "Enterobacter",
+  "seed_target_score": 0.05416020154181801,
+  "best_candidate_target_score": 0.2458402369113072,
+  "best_delta_target_score": 0.1916800353694892,
+  "mean_delta_target_score_top_k": 0.16755887401777242,
+  "mean_distance_from_seed_top_k": 8.1,
+  "top_k": 10
+}

@@ -1,0 +1,9 @@
+metric,value
+min_seed_cosine_similarity,0.9980371594429016
+mean_seed_cosine_similarity,0.9989990770816803
+median_seed_cosine_similarity,0.9991112649440765
+max_seed_cosine_similarity,0.9995733499526978
+min_seed_novelty_distance,0.0004266500473022
+mean_seed_novelty_distance,0.0010009229183196582
+median_seed_novelty_distance,0.00088873505592345
+max_seed_novelty_distance,0.0019628405570983

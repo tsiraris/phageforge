@@ -1,0 +1,26 @@
+{
+  "source_master_csv": "results/analysis/validity/master_candidates_validated.csv",
+  "source_validated_pool_csv": "results/analysis/validity/validated_pool_ranked.csv",
+  "max_actual_mutations": 12,
+  "strict_cosine_floor": 0.995,
+  "strict_top5_floor": 0.992,
+  "pll_delta_floor": 0.0,
+  "preferred_targets": [
+    "Enterobacter",
+    "Acinetobacter"
+  ],
+  "mutation_disagreement_summary": {
+    "n_rows": 4800,
+    "n_disagreements": 4800,
+    "fraction_disagreement": 1.0,
+    "mean_reported_n_mutations": 2.4175,
+    "mean_actual_n_mutations": 10.981666666666667,
+    "mean_original_seq_dist_from_seed": 10.981666666666667,
+    "mean_patched_seq_dist_from_seed": 10.981666666666667
+  },
+  "n_rows_full": 4800,
+  "n_rows_unique": 1587,
+  "n_rows_unique_preferred": 619,
+  "n_validated_patched_full": 3786,
+  "n_validated_patched_unique": 978
+}

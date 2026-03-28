@@ -528,5 +528,5 @@ def main() -> None:
     print(f"  - {output_dir / 'validity_summary_by_run.csv'}")                            # Show the run summary table path.
 
 
-if __name__ == "__main__":                                                               # Run the CLI only when the file is executed directly.
+if __name__ == "__main__":                                                                # Run the CLI only when the file is executed directly.
     main()                                                                                # Invoke the main function.

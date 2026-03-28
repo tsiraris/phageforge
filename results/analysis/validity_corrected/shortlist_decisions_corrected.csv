@@ -1,0 +1,3 @@
+target_host,n_unique_sequences_total,n_unique_sequences_validated,shortlist_strategy,n_shortlist_rows
+Enterobacter,317,278,validated_only,10
+Acinetobacter,302,244,validated_only,10

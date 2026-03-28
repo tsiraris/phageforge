@@ -1,0 +1,15 @@
+{
+  "from_target": "Enterobacter",
+  "next_target": "Acinetobacter",
+  "phaseA_plan_json": "results/phaseA/phaseA_plan.json",
+  "source_top_candidates_csv": "results/phaseA/step1_enterobacter/top_candidates.csv",
+  "chosen_candidate_id": "round8_cand473",
+  "chosen_mutations": "C574Q;I617G",
+  "chosen_target_score": 0.7159455651180701,
+  "chosen_selection_score": 0.9495237465338664,
+  "chosen_family_cosine": 0.9983260035514832,
+  "chosen_target_anchor_cosine": 0.9589594006538392,
+  "chosen_n_mutations": 2,
+  "fasta_path": "results/phaseA/step2_seed/phaseA_followup_seed_Enterobacter_to_Acinetobacter.fasta",
+  "canonical_seed_protein_id": "QFR57578.1"
+}

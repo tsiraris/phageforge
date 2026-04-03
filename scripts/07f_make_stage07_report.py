@@ -1,109 +1,72 @@
-"""
-==========================================================
-07f: Generate a compact markdown report for Stage 07 runs.
-==========================================================
+"""Stage 07f: Write a compact markdown report for the Stage 07 generation and ranking run."""
 
-This script writes a small human-readable report for one completed Stage 07 run.
-It is intentionally lightweight to quickly summarize results without first
-building a large notebook or PDF pipeline.
-"""
+from __future__ import annotations
 
-from __future__ import annotations                                                    # Enable postponed annotation evaluation for cleaner typing.
-import argparse                                                                       # Parse command-line arguments.
-from pathlib import Path                                                              # Build report output paths robustly.
-import pandas as pd                                                                   # Read the ranked candidate table and build the markdown summary.
+import argparse
+from pathlib import Path
+
+import pandas as pd
+
+from phageforge.stage07_utils import read_json
 
 
 def parse_args() -> argparse.Namespace:
-    """Return command-line arguments for writing a compact Stage 07 markdown report."""
-    ap = argparse.ArgumentParser(description="Write a markdown summary for a completed Stage 07 run.")  # Create the parser for the reporting stage.
-    ap.add_argument("--context_json", type=str, required=True, help="Stage 07 context JSON from 07a.")  # Point to the context JSON used for the run.
-    ap.add_argument("--ranked_csv", type=str, required=True, help="Final ranked CSV from 07e.")         # Point to the final ranked candidate table.
-    ap.add_argument("--report_md", type=str, required=True, help="Where to write the markdown report.") # Point to the markdown output path.
-    ap.add_argument("--top_k", type=int, default=20, help="How many top candidates to include in the report table.")  # Control the number of displayed top candidates.
-    return ap.parse_args()                                                                              # Parse the CLI and return the resulting namespace.
+    """Parse command-line arguments for the Stage 07 markdown report."""
+    ap = argparse.ArgumentParser(description="Create a compact markdown report for Stage 07.")
+    ap.add_argument("--context_json", type=str, required=True, help="Stage 07 context JSON from 07a_prepare_stage07_design_context.py.")
+    ap.add_argument("--ranked_csv", type=str, required=True, help="Ranked candidate CSV from 07e_rank_multimodal_candidates.py.")
+    ap.add_argument("--report_md", type=str, required=True, help="Where to write the markdown report.")
+    ap.add_argument("--top_k", type=int, default=5, help="How many top-ranked candidates to summarize in the report.")
+    return ap.parse_args()
 
 
-def summarize_provenance(top: pd.DataFrame) -> list[str]:
-    """Return short markdown bullet points summarizing which generator backends and ESM settings produced the shortlist."""
-    lines = []                                                                                          # Collect the provenance summary lines before returning them.
-    if "generator_mode" in top.columns:                                                                 # Summarize which generation backends appear in the shortlist.
-        counts = top["generator_mode"].astype(str).value_counts()                                       # Count how often each backend appears in the top table.
-        lines.append("- Generator modes: " + ", ".join(f"{k} ({v})" for k, v in counts.items()))        # Report backend counts in compact markdown form.
-    if "esm3_model" in top.columns:                                                                     # Summarize which Forge model labels appear when present.
-        models = [x for x in top["esm3_model"].dropna().astype(str).unique().tolist() if x != ""]       # Keep only non-empty model labels.
-        if models:                                                                                      # Only emit the line when at least one explicit model label exists.
-            lines.append("- ESM3 models observed: " + ", ".join(models))                                # Report distinct Forge model names used in the shortlist.
-    if "esm3_temperature" in top.columns:                                                               # Summarize temperature settings when present.
-        temps = top["esm3_temperature"].dropna().astype(float)                                          # Keep only non-missing temperatures.
-        if len(temps) > 0:                                                                              # Only emit the line when at least one temperature value exists.
-            lines.append(f"- Temperature range in shortlist: {temps.min():.3f} to {temps.max():.3f}")   # Report the observed temperature range.
-    if "esm3_num_steps" in top.columns:                                                                 # Summarize Forge iterative decode steps when present.
-        steps = top["esm3_num_steps"].dropna().astype(int).unique().tolist()                            # Gather distinct decode-step values.
-        if steps:                                                                                       # Only emit the line when at least one explicit num_steps value exists.
-            lines.append("- ESM3 num_steps values observed: " + ", ".join(str(x) for x in sorted(steps)))  # Report distinct num_steps settings.
-    return lines                                                                                        # Return the assembled provenance summary bullets.
-
-
-# Main entrypoint: Gather context and writes the markdown report.
 def main() -> None:
-    # Read the full context JSON and the final ranked candidate table.
-    args = parse_args()                                                               # Parse command-line arguments.
-    context_text = Path(args.context_json).read_text(encoding="utf-8")                # Read the full context JSON as text for direct inclusion in the report.
-    ranked = pd.read_csv(args.ranked_csv)                                             # Read the final ranked candidate table from disk.
-    # Keep only the top-k rows for the summary section.
-    top = ranked.head(args.top_k).copy()                                              
+    # Read the Stage 07 context and ranked candidate table.
+    args = parse_args()
+    context = read_json(args.context_json)
+    ranked_df = pd.read_csv(args.ranked_csv)
+    top_df = ranked_df.sort_values(["rank_diverse", "rank_raw"]).head(args.top_k).copy()
 
-    # Write the markdown report.
-    lines = []                                                                        # Collect report lines before joining them into one markdown string.
-    lines.append("# Stage 07 report")                                                 # Write the top-level report title.
-    lines.append("")                                                                  # Add a blank line for markdown readability.
-    lines.append("## Stage 07 context JSON")                                          # Add a section heading for the run context.
-    lines.append("```json")                                                           # Start a fenced JSON code block.
-    lines.append(context_text)                                                        # Insert the raw context JSON text.
-    lines.append("```")                                                               # Close the fenced JSON block.
-    lines.append("")                                                                  # Add a blank line between sections.
-    lines.append("## Generation provenance summary")                                  # Add a section explaining how the shortlist was actually generated.
-    prov_lines = summarize_provenance(top)                                            # Build concise provenance bullets from the top-k candidate table.
-    if prov_lines:                                                                    # Only print the summary when provenance fields are present.
-        lines.extend(prov_lines)                                                      # Append each provenance bullet line to the markdown report.
-    else:                                                                             # Handle cases where provenance columns are absent.
-        lines.append("- No explicit generation provenance columns were available.")   # Insert a fallback note instead of leaving the section empty.
-    lines.append("")                                                                  # Add a blank line between sections.
-    lines.append("## Top candidates")                                                 # Add a section heading for the top-ranked candidates.
-
-    cols = [                                                                          # Choose a compact set of important ranking columns when present.
-        c for c in [
-            "candidate_sequence",
-            "target_host",
-            "generator_mode",
-            "esm3_model",
-            "esm3_temperature",
-            "esm3_num_steps",
-            "editable_hotspot_count",
-            "mutation_positions",
-            "target_score",
-            "strict_manifold_score",
-            "family_cosine",
-            "target_anchor_cosine",
-            "structure_score",
-            "tissue_score",
-            "mutation_penalty",
-            "final_multimodal_rank_score",
-        ]
-        if c in top.columns
+    # Build a concise decision-oriented markdown report instead of only dumping raw JSON again.
+    lines = [
+        "# Stage 07 report",
+        "",
+        "## Run summary",
+        f"- Target host: **{context['target_host']}**",
+        f"- Selected seed: **{context['selected_seed']['seed_protein_id']}** from **{context['selected_seed']['source_host']}**",
+        f"- Family members: **{context['family_context']['family_member_count']}**",
+        f"- Editable hotspot count: **{len(context['editable_region'].get('hotspot_positions', []))}**",
+        f"- Raw ranked candidates: **{len(ranked_df)}**",
+        f"- Validation panel size: **{int(ranked_df.get('selected_for_panel', pd.Series(dtype=bool)).sum())}**",
+        f"- Used local ESM3: **{bool(ranked_df.get('used_local_esm3', pd.Series([False])).any())}**",
+        f"- Used Forge / API ESM3: **{bool(ranked_df.get('used_esm3_api', pd.Series([False])).any())}**",
+        f"- Used ESM2 fallback: **{bool(ranked_df.get('used_esm2_fallback', pd.Series([False])).any())}**",
+        "",
+        "## Top candidates",
+        "",
+        "| diverse_rank | raw_rank | sample_id | regime | target_score | manifold | structure | final_score | selected_panel | mutations |",
+        "|---:|---:|---:|---|---:|---:|---:|---:|:---:|---|",
     ]
-    if cols:                                                                          # Only render a table when at least one relevant column exists.
-        lines.append(top[cols].to_markdown(index=False))                              # Convert the top-k candidate table into markdown format.
-    else:                                                                             # Handle degenerate cases where the ranked CSV lacks expected columns.
-        lines.append("_No ranking columns available._")                               # Insert a fallback note instead of an empty table.
+    for _, row in top_df.iterrows():
+        lines.append(
+            f"| {int(row.get('rank_diverse', 0))} | {int(row.get('rank_raw', 0))} | {int(row['sample_id'])} | {row.get('generation_regime', 'balanced')} | "
+            f"{row.get('target_score', 0.0):.6f} | {row.get('strict_manifold_score', 0.0):.6f} | {row.get('structure_score', 0.0):.6f} | "
+            f"{row.get('final_multimodal_rank_score', 0.0):.6f} | {bool(row.get('selected_for_panel', False))} | {row.get('mutation_positions', '')} |"
+        )
 
-    # Write the markdown report to disk.
-    report_path = Path(args.report_md)                                                # Convert the output markdown path into a Path object.
-    report_path.parent.mkdir(parents=True, exist_ok=True)                             # Create the report directory if needed.
-    report_path.write_text("\n".join(lines), encoding="utf-8")                        # Join the report lines with newlines and write the markdown file.
-    print(f"Wrote: {report_path}")                                                    # Print the report path for quick confirmation.
+    lines.extend([
+        "",
+        "## Context JSON",
+        "```json",
+        Path(args.context_json).read_text(encoding='utf-8'),
+        "```",
+    ])
+
+    out_path = Path(args.report_md)
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    out_path.write_text("\n".join(lines), encoding="utf-8")
+    print(f"Wrote: {out_path}")
 
 
-if __name__ == "__main__":                                                            # Standard Python entrypoint guard.
-    main()                                                                            # Execute the report-writing CLI.
+if __name__ == "__main__":
+    main()

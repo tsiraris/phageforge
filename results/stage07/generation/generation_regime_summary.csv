@@ -1,0 +1,5 @@
+generation_regime,rows_generated,unique_sequences,ok_rows,mean_mutation_penalty,mean_guided_score
+block24_t07_k5_s42,8,8,8,18.75,0.4436922912275623
+block24_t08_k8_s123,8,8,8,19.875,0.43249553275812413
+hotspots24_t07_k5_s42,8,8,8,18.0,0.5278070191604622
+hotspots32_t08_k8_s123,8,8,8,22.625,0.5586927102591116

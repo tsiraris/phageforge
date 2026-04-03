@@ -1,28 +1,3 @@
-# Stage 07 report
-
-## Run summary
-- Target host: **Acinetobacter**
-- Selected seed: **round8_cand473** from **Klebsiella**
-- Family members: **4**
-- Editable hotspot count: **489**
-- Raw ranked candidates: **32**
-- Validation panel size: **5**
-- Used local ESM3: **True**
-- Used Forge / API ESM3: **False**
-- Used ESM2 fallback: **False**
-
-## Top candidates
-
-| diverse_rank | raw_rank | sample_id | regime | target_score | manifold | structure | final_score | selected_panel | mutations |
-|---:|---:|---:|---|---:|---:|---:|---:|:---:|---|
-| 1 | 1 | 11 | hotspots24_t07_k5_s42 | 0.960267 | 0.998479 | 0.981235 | 0.784310 | True | 179:P→G;317:R→V;334:M→G;373:T→G;374:F→G;391:L→S;402:N→G;427:T→I;505:G→N;522:W→A;527:D→R;593:H→V |
-| 2 | 2 | 10 | hotspots24_t07_k5_s42 | 0.959737 | 0.998597 | 0.981066 | 0.534109 | True | 179:P→G;317:R→V;334:M→G;373:T→G;374:F→G;391:L→A;402:N→V;427:T→L;505:G→N;522:W→G;527:D→R;593:H→V |
-| 3 | 3 | 21 | hotspots32_t08_k8_s123 | 0.956725 | 0.998979 | 0.979925 | 0.523553 | True | 325:K→G;329:W→I;332:N→G;334:M→I;374:F→G;402:N→G;404:D→N;405:A→V;414:Q→T;425:Y→T;435:A→G;475:P→T;505:G→N |
-| 4 | 4 | 28 | block24_t07_k5_s42 | 0.957661 | 0.998986 | 0.980352 | 0.519171 | True | 391:L→G;392:R→L;395:A→G;397:N→G;398:V→G;401:F→G;402:N→T;403:G→N;404:D→A;405:A→L;408:G→D;412:Y→N;414:Q→T |
-| 5 | 5 | 23 | hotspots32_t08_k8_s123 | 0.957757 | 0.998868 | 0.980323 | 0.513906 | True | 325:K→G;329:W→L;332:N→G;334:M→G;374:F→G;401:F→I;402:N→G;404:D→N;405:A→L;414:Q→T;425:Y→T;435:A→G;475:P→T;505:G→N |
-
-## Context JSON
-```json
 {
   "stage": "07",
   "target_host": "Acinetobacter",
@@ -10284,4 +10259,3 @@
     "strict_csv": "data/processed/rbp_dataset_eskapee_strict.csv"
   }
 }
-```

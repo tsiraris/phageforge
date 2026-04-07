@@ -1,0 +1,12 @@
+{
+  "min_mutations": 8,
+  "max_mutations": 40,
+  "min_normalized_entropy": 0.45,
+  "max_single_residue_fraction": 0.22,
+  "max_homopolymer_run": 6,
+  "max_low_complexity_fraction": 0.2,
+  "min_mutation_span": 8,
+  "max_outside_editable_fraction": 0.0,
+  "max_pairwise_identity": 0.985,
+  "max_mutation_overlap": 0.8
+}

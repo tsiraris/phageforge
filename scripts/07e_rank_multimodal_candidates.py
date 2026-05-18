@@ -33,8 +33,8 @@ def main() -> None:
     # Parse the CLI once at startup so all downstream settings are centralized.
     args = parse_args()     # Read the command-line arguments for this ranking run.
 
-    # Load the structure-aware scoring table and keep only candidates that completed successfully.
-    scored_df = pd.read_csv(args.structure_scored_csv)  # Read the Stage 07 structure-scored candidate table.
+    # Load the structure-aware scoring table, and keep only candidates that completed successfully and deduplicate.
+    scored_df = pd.read_csv(args.structure_scored_csv)  # Read the Stage 07c structure-scored candidate table.
     ranked_df = scored_df.loc[scored_df["generation_status"].astype(str) == "ok"].copy().reset_index(drop=True)     # Keep only successful generations.
     ranked_df = ranked_df.drop_duplicates(subset=["candidate_sequence"]).reset_index(drop=True)                     # Remove exact duplicate sequences before ranking.
 
@@ -48,21 +48,22 @@ def main() -> None:
     ranked_df["used_esm2_fallback"] = ranked_df.get("used_esm2_fallback", False).astype(bool)                                   # Normalize the ESM2 fallback provenance flag.
     ranked_df["provenance_complete"] = (~ranked_df["used_esm2_fallback"]).astype(bool)                                          # Mark candidates that stayed inside the preferred provenance path.
 
-    # Combine the main Stage 07 ranking signals into one base score before diversity reranking.
-    ranked_df["base_rank_score"] = (  # Build the raw ranking score used before diversity penalties.
-        0.42 * ranked_df["target_score"]
-        + 0.28 * ranked_df["strict_manifold_score"]
-        + 0.20 * ranked_df["structure_score"]
-        + 0.05 * ranked_df["tissue_score"]
-        + 0.05 * ranked_df.get("guided_mutation_score", 0.0).fillna(0.0)
-        - 0.01 * ranked_df["mutation_penalty"].fillna(0.0)
+    # Combine the main Stage 07 ranking signals into one base score.
+    ranked_df["base_rank_score"] = ( 
+        0.42 * ranked_df["target_score"]                  # 42% - Efficacy
+        + 0.28 * ranked_df["strict_manifold_score"]       # 28% - Stability
+        + 0.20 * ranked_df["structure_score"]             # 20% - Structural Proxy
+        + 0.05 * ranked_df["tissue_score"]                # 5%  - Clinical Context
+        + 0.05 * ranked_df["guided_mutation_score"]       # 5%  - Evolutionary Logic
+        - 0.01 * ranked_df["mutation_penalty"]            # -1% - Parsimony Penalty
     )
+    # Rank the candidate based on the base score, rank them within each generation regime, and mark the top candidates within each regime as preffered during diversity reranking.
     ranked_df = ranked_df.sort_values(["base_rank_score", "target_score", "strict_manifold_score"], ascending=[False, False, False]).reset_index(drop=True)  # Sort by the base score and tie-breakers.
     ranked_df["rank_raw"] = np.arange(1, len(ranked_df) + 1)  # Record the raw pre-diversity rank.
     ranked_df["regime_pool_rank"] = ranked_df.groupby("generation_regime", dropna=False)["base_rank_score"].rank(method="first", ascending=False)  # Rank candidates within each generation regime.
     preferred_mask = ranked_df["regime_pool_rank"] <= max(1, int(args.per_regime_pool))  # Mark the top candidates from each regime as preferred during diversity selection.
 
-    # Compute compact sequence embeddings and then greedily build a diverse validation ordering.
+    # Compute their sequence embeddings and then greedily build a diverse validation ordering.
     diversity_embeddings = embed_sequences(ranked_df["candidate_sequence"].astype(str).tolist(), model_name=args.embedding_model, batch_size=4)  # Embed candidates for diversity-aware ordering.
     greedy_order, penalties = greedy_diverse_order(  # Run the greedy diversity pass over the ranking table.
         diversity_embeddings,
@@ -70,6 +71,7 @@ def main() -> None:
         penalty_weight=args.diversity_penalty_weight,
         preferred_mask=preferred_mask.to_numpy(dtype=bool),
     )
+    # Compute the final diversity-aware rank.
     rank_diverse = np.empty(len(ranked_df), dtype=int)              # Allocate the final diversity-aware rank array.
     rank_diverse[greedy_order] = np.arange(1, len(ranked_df) + 1)   # Convert the greedy order into rank positions.
     ranked_df["nearest_selected_cosine"] = penalties                # Store the nearest-selected similarity for inspection.

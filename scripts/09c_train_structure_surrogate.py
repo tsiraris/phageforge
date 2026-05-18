@@ -9,18 +9,14 @@ The output is always a single joblib bundle that later scripts can load uniforml
 """
 
 from __future__ import annotations
-
 import argparse
 from pathlib import Path
-
 import joblib
 import numpy as np
 import pandas as pd
 from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor
 from sklearn.metrics import roc_auc_score
-
 from phageforge.stage09_utils import read_json
-
 
 
 def parse_args() -> argparse.Namespace:
@@ -34,28 +30,31 @@ def parse_args() -> argparse.Namespace:
     return ap.parse_args()                                                                                                                                            # Parse command-line inputs and return them
 
 
-
 def main() -> None:
     # Read the surrogate dataset and the coverage summary that says whether there are enough structural labels to fit a real model.
     args = parse_args()                                         # Execute argument parser and store parsed arguments
     dataset_df = pd.read_csv(args.dataset_csv)                  # Read the specified CSV file into a pandas DataFrame
     summary = read_json(args.summary_json)                      # Read the specified JSON summary into a dictionary
 
-    # Keep only the numeric feature columns declared by Stage 09b and drop rows missing all structural targets.
+    # Keep only the numeric feature columns declared by Stage 09b (e.g., mutation_count, normalized_entropy, longest_homopolymer_run), and drop rows missing all structural targets.
     feature_columns = list(summary.get("feature_columns", []))                                                                                                          # Extract the list of feature column names from the summary
     if not feature_columns:                                                                                                                                             # Check if the feature_columns list is empty
         raise ValueError("The Stage 09 surrogate summary JSON does not contain any feature columns.")                                                                   # Throw an error if no feature columns are found
+    # Convert the feature columns to numeric, fill missing with 0.0, and convert to numpy array to obtain the X matrix
     X = dataset_df.reindex(columns=feature_columns, fill_value=0.0).to_numpy(dtype=np.float32)                                                                          # Extract features, fill missing with 0.0, and convert to numpy array
+    # Create the y_targets by extracting the target labels, esmfold pLDDT, and RMSD to the selected seed and convert to numpy arrays, filling missing with 0.0, and NaN, respectively.
     y_pass = dataset_df["stage08_pass"].astype(int).to_numpy(dtype=int) if "stage08_pass" in dataset_df.columns else np.zeros(len(dataset_df), dtype=int)               # Extract target labels as ints, defaulting to zeros if missing
     y_plddt = dataset_df["esmfold_mean_plddt"].to_numpy(dtype=np.float32) if "esmfold_mean_plddt" in dataset_df.columns else np.full(len(dataset_df), np.nan, dtype=np.float32) # Extract pLDDT scores, defaulting to NaNs if missing
     y_rmsd = dataset_df["rmsd_to_selected_seed"].to_numpy(dtype=np.float32) if "rmsd_to_selected_seed" in dataset_df.columns else np.full(len(dataset_df), np.nan, dtype=np.float32) # Extract RMSD scores, defaulting to NaNs if missing
 
-    # Fall back to a rule-only bundle if the labeled dataset is too small or entirely one-sided.
+    # Mathematical sanity check on the data: It requires a minimum number of rows (user defined, default 20) and absolute proof of "class variation" (dataset must contain at least one protein that passed and one that failed). 
     enough_rows = int(len(dataset_df)) >= int(args.min_rows_for_fit) # Check if the dataset size meets the minimum row threshold
     enough_class_variation = len(np.unique(y_pass)) > 1              # Check if both positive and negative labels exist in the dataset
+    # If the dataset is too small or entirely one-sided (e.g., a 0% pass rate in Stage 08), the script aborts ML training and locks the mode to "rule_based".
     use_rule_bundle = not (enough_rows and enough_class_variation)   # Determine if we must fallback to rule-based logic
 
-    bundle = {                                                       # Initialize the surrogate bundle dictionary
+    # Initialize the surrogate bundle dictionary
+    bundle = {                                                       
         "feature_columns": feature_columns,                          # Store the feature column names in the bundle
         "mode": "rule_based" if use_rule_bundle else "fitted",       # Set the bundle mode depending on data viability
         "pass_model": None,                                          # Initialize pass_model key as None
@@ -68,10 +67,13 @@ def main() -> None:
         },                                                           # Close the training_summary sub-dictionary
     }                                                                # Close the bundle dictionary
 
-    # Fit lightweight tree-based models only when the Stage 08 label set is large enough to justify it.
+    # If the data passes the sanity check, three distinct, lightweight sklearn Random Forest models are instantiated
     if not use_rule_bundle:                                                                                                         # Execute if data is sufficient for model fitting
+        # A classifier trained to predict the boolean probability of the sequence surviving the structural gauntlet.
         pass_model = RandomForestClassifier(n_estimators=300, max_depth=5, min_samples_leaf=2, random_state=args.seed)              # Initialize Random Forest classifier for pass/fail
+        # A regressor trained to predict the exact continuous confidence score.
         plddt_model = RandomForestRegressor(n_estimators=300, max_depth=5, min_samples_leaf=2, random_state=args.seed)              # Initialize Random Forest regressor for pLDDT
+        # A regressor trained to predict the exact geometric drift in Ångströms.
         rmsd_model = RandomForestRegressor(n_estimators=300, max_depth=5, min_samples_leaf=2, random_state=args.seed)               # Initialize Random Forest regressor for RMSD
 
         pass_model.fit(X, y_pass)                                                                                                   # Train the classification model on all features and labels
@@ -103,7 +105,8 @@ def main() -> None:
             }                                                                                                                       # Close the update payload dictionary
         )                                                                                                                           # Complete the update method call
 
-    # Persist the bundle in one joblib file so later Stage 09 scripts can load it with a single path argument.
+    # Regardless of whether the script trained actual Random Forests or defaulted to the rule-based failsafe, 
+    # it packages its configuration, the feature column list, and the training metadata into a single master dictionary and saves it into a binary .joblib file to be easily loadedby the Stage 09d search engine.
     out_path = Path(args.out_model)                                      # Create a Path object for the target save destination
     out_path.parent.mkdir(parents=True, exist_ok=True)                   # Ensure the parent directory tree exists
     joblib.dump(bundle, out_path)                                        # Serialize and save the final bundle to disk

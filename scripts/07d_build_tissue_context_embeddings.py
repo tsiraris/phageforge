@@ -8,8 +8,7 @@ It accepts either:
 - precomputed embedding columns, or
 - raw numeric/categorical metadata that can be converted into one embedding table
 
-The result is a tensor plus a metadata CSV that later scripts can merge into the
-final multimodal ranking stage.
+The result is a tensor, plus a metadata CSV, that later scripts can merge into the final multimodal ranking stage.
 """
 
 from __future__ import annotations                                                    # Enable postponed annotation evaluation for cleaner typing.

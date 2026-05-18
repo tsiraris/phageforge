@@ -21,7 +21,6 @@ from phageforge.stage09_utils import (
     write_json,
 )
 
-
 def parse_args() -> argparse.Namespace:
     """Parse command-line arguments for the Stage 09 edit-space builder."""
     ap = argparse.ArgumentParser(description="Build the Stage 09 structure-aware edit space JSON.")                                                                  # Initialize the argument parser object
@@ -36,7 +35,6 @@ def parse_args() -> argparse.Namespace:
     return ap.parse_args()                                                                                                                                         # Parse and return the command-line arguments
 
 
-
 def main() -> None:
     # Read the Stage 07 context and optional strict RBP bank that will be used to sharpen target-host residue proposals.
     args = parse_args()                                                                                                           # Execute argument parsing and store into args
@@ -44,22 +42,27 @@ def main() -> None:
     strict_df = pd.read_csv(args.strict_csv) if args.strict_csv else None                                                         # Load CSV to dataframe if provided, else None
 
     # Build per-position substitution proposals from the Stage 07 position features, family rows, and optional target-host bank.
+    # Returns a list of EditProposal objects, each containing a single mutation proposal with attributes such as: allowed aminoacids, family preferences, target preferences, conservation penalty etc.
     proposals = build_edit_proposals_from_context(context=context, strict_df=strict_df)                                           # Build list of mutation proposals
     if not proposals:                                                                                                             # Check if the returned proposals list is empty
         raise ValueError("No Stage 09 edit proposals could be constructed from the provided Stage 07 context.")                   # Throw exception if no proposals were created
 
-    # Choose a compact hard edit set, then retain a small soft buffer of secondary positions for optional search expansion.
+    # Choose a compact hard edit set of mutable positions (highest functionality_weight positions from each "structured_window" region)
     hard_positions = choose_editable_positions(proposals=proposals, max_positions=args.max_edit_positions, seed=args.seed)        # Determine the set of hard edit positions
-    sorted_by_priority = sorted(proposals, key=lambda item: (item.functional_weight, -item.conservation_penalty, item.position), reverse=True) # Sort proposals by priority metrics
+    # Sort the proposals by priority metrics (functional_weight, conservation_penalty, position)
+    sorted_by_priority = sorted(proposals, key=lambda item: (item.functional_weight, -item.conservation_penalty, item.position), reverse=True) 
+    # Create a new list for the soft buffer positions
     soft_positions: list[int] = []                                                                                                # Initialize an empty list for soft positions
+    # Loop through the newly sorted list of proposals, if a position is already in the hard_positions list skip it
     for item in sorted_by_priority:                                                                                               # Iterate over sorted proposals sequentially
         if int(item.position) in hard_positions:                                                                                  # Check if position is already marked as hard
             continue                                                                                                              # Skip current loop iteration if it is hard
+    # If the position wasn't in the hard list, add it to the soft list, and if it reaches its capacity, break.
         soft_positions.append(int(item.position))                                                                                 # Add position integer to the soft edit list
         if len(soft_positions) >= args.soft_buffer_positions:                                                                     # Check if the soft list has reached its limit
             break                                                                                                                 # Terminate loop early if soft buffer is full
 
-    # Freeze all other seed positions so the next stage searches a small scaffold-preserving neighborhood only.
+    # Freeze all other seed positions (except hard and soft) so the next stage searches a small scaffold-preserving neighborhood only.
     seed_sequence = str(context["selected_seed"]["seed_sequence"])                                                                # Extract original seed sequence as string
     all_positions = set(range(1, len(seed_sequence) + 1))                                                                         # Generate a set of all 1-indexed positions
     editable_positions = set(hard_positions) | set(soft_positions)                                                                # Union hard and soft sets into editable set

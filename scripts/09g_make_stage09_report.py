@@ -6,7 +6,6 @@ baseline so the user can tell whether the redesign strategy is genuinely improvi
 """
 
 from __future__ import annotations
-
 import argparse
 import json
 import math
@@ -29,7 +28,25 @@ def parse_args() -> argparse.Namespace:
 
 
 def safe_mean(series: pd.Series) -> float:
-    """Return a float mean that gracefully handles empty or all-NaN series."""
+    """
+    Calculates the arithmetic mean of a pandas Series safely, correctly handling 
+    empty, completely null, or non-numeric datasets without raising exceptions.
+    This might happen for example if a protein fails to fold entirely, with its pLDDT or RMSD columns might 
+    be empty, or upstream processes might inject text like "error" or "timeout").
+    
+    Example:
+        Standard case (valid floats)
+        safe_mean(pd.Series([85.0, 90.0, 95.0]))
+        90.0
+        
+        Corrupted data (strings and None are coerced to NaN and ignored)
+        safe_mean(pd.Series([70.0, "folding_error", 80.0, None]))
+        75.0
+        
+        Failure case (no valid numbers exist)
+        safe_mean(pd.Series(["timeout", None, "OOM_error"]))
+        nan
+    """
     values = pd.to_numeric(series, errors="coerce")  # Convert series items to numeric types, forcing unparseable items to NaN
     if values.dropna().empty:                        # Check if dropping all NaNs leaves the sequence completely empty
         return math.nan                              # Return mathematical NaN if no numeric data is available
@@ -70,7 +87,7 @@ def main() -> None:
             "baseline_mean_rmsd": safe_mean(baseline_df.get("rmsd_to_selected_seed", pd.Series(dtype=float))),                                      # Extract and calculate the safe mean for baseline RMSD to seed scaffold
         }                                                                                                                                           # End baseline dictionary initialization
 
-    # Write the final candidate table, a compact JSON summary, and a markdown report for project closeout and job-application packaging.
+    # Write the final candidate table, a compact JSON summary, and a markdown report for project Stage 09 closeout.
     out_dir = Path(args.out_dir)                                                                                                                                                   # Create a Path object for the target output directory
     out_dir.mkdir(parents=True, exist_ok=True)                                                                                                                                     # Make the directory structure if it doesn't already exist
     validation_df.sort_values(["stage08_pass", "esmfold_mean_plddt", "rmsd_to_selected_seed"], ascending=[False, False, True]).to_csv(out_dir / "stage09_final_candidate_table.csv", index=False) # Sort candidates by pass, descending pLDDT, and ascending RMSD, then export to CSV
@@ -97,7 +114,7 @@ def main() -> None:
         "| rank | sample_id | stage09_score | mean_pLDDT | mut_mean_pLDDT | RMSD_to_seed | pass | reason |",                                                                                                                                            # Define the markdown table headers
         "|---:|---:|---:|---:|---:|---:|:---:|---|",                                                                                                                                                                                                    # Define the markdown table text alignments
     ]                                                                                                                                                                                                                                                   # End line list initialization
-
+    # Iterate over the top 10 best-scoring dataframe rows, giving each a rank starting at 1, prioritizing stage08_pass and dynamically pull dataframe attributes into markdown format
     for rank, (_, row) in enumerate(validation_df.sort_values(["stage08_pass", "esmfold_mean_plddt", "rmsd_to_selected_seed"], ascending=[False, False, True]).head(10).iterrows(), start=1):                                                                                                                                                       # Iterate over the top 10 best-scoring dataframe rows giving each a rank starting at 1
         lines.append(                                                                                                                                                                                                                                                                                                                               # Append a newly formatted markdown table row to the lines list
             f"| {rank} | {int(row['sample_id'])} | {float(row.get('final_multimodal_rank_score', row.get('stage09_score', 0.0))):.6f} | {float(row.get('esmfold_mean_plddt', float('nan'))):.2f} | {float(row.get('mutation_site_mean_plddt', float('nan'))):.2f} | {float(row.get('rmsd_to_selected_seed', float('nan'))):.3f} | {bool(row.get('stage08_pass', False))} | {row.get('stage08_decision_reason', '')} |"  # Dynamically pull dataframe attributes into markdown format

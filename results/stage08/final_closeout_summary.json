@@ -1,0 +1,13 @@
+{
+  "selected_seed": {
+    "seed_protein_id": "round8_cand473",
+    "virus_accession": "round8_cand473",
+    "source_host": "Klebsiella",
+    "sequence_length": 658
+  },
+  "num_final_candidates": 3,
+  "num_stage08_pass": 0,
+  "primary_sample_ids": [],
+  "final_table": "/home/sagemaker-user/results/final_closeout/final_candidate_table.csv",
+  "final_fasta": "/home/sagemaker-user/results/final_closeout/final_top_candidates.fasta"
+}

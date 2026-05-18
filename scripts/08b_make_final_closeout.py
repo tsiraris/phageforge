@@ -35,6 +35,14 @@ def parse_args() -> argparse.Namespace:
 
 
 def write_fasta(df: pd.DataFrame, fasta_path: Path) -> None:
+    """
+    Translates the finalized Pandas DataFrame of winning candidates into a standard biological FASTA file, injecting critical 
+    pipeline metadata (sample ID, final rank, pass status, and final multimodal rank score) directly into the sequence headers.
+
+    Example Output Format:
+        >sample42|rank=1|pass=True|score=0.985002
+        MKAACDEFGHIKLMNPQRSTVWY...
+    """    
     lines: list[str] = []                                               # Initialize an empty list to store the formatted FASTA lines
     for _, row in df.iterrows():                                        # Iterate over each row (candidate) in the provided DataFrame
         header = (                                                      # Begin constructing the FASTA header string
@@ -47,6 +55,24 @@ def write_fasta(df: pd.DataFrame, fasta_path: Path) -> None:
 
 
 def decision_label(pass_flag: bool, rank: int) -> str:
+    """
+    It categorizes candidates into distinct operational tiers ("primary", "backup", "near_pass_or_fail") 
+    to display exactly which protein sequences should be ordered for physical synthesis.
+
+    It evaluates the strict boolean `stage08_pass` flag (which confirms physical folding viability) 
+    against the candidate's absolute holistic `rank`. 
+    - Candidates that pass ALL checks AND are in the top 2 are flagged as "primary" (immediate synthesis).
+    - Candidates that pass ALL checks but rank 3rd or lower are flagged as "backup" (held in reserve).
+    - Any candidate that failed a physical check (even if it ranked highly in Stage 07) is downgraded 
+        to "near_pass_or_fail".
+
+    Example:
+        decision_label(pass_flag=True, rank=1)
+        -> "primary"
+
+        decision_label(pass_flag=False, rank=2)
+        -> "near_pass_or_fail"
+    """
     if pass_flag and rank <= 2:                                         # Check if the candidate passed validation and is in the top 2
         return "primary"                                                # Return 'primary' label for these top-tier candidates
     if pass_flag:                                                       # Check if the candidate passed validation but ranked > 2
@@ -55,28 +81,35 @@ def decision_label(pass_flag: bool, rank: int) -> str:
 
 
 def main() -> None:
+    # Call argument parser and create output directory (if it doesn't exist)
     args = parse_args()                                                                 # Call parse_args to retrieve parsed command-line arguments
     args.out_dir.mkdir(parents=True, exist_ok=True)                                     # Create the output directory, ignoring if it already exists
 
+    # Load the primarily ranked candidates (Stage 07e), validated top 3/5 candidates (Stage 07h), and Stage 08 top 3/5 structural metrics
     ranked = pd.read_csv(args.ranked_csv)                                               # Load the primarily ranked candidates CSV into a DataFrame
     valid3 = pd.read_csv(args.validated_top3_csv)                                       # Load the validated top 3 candidates CSV into a DataFrame
     valid5 = pd.read_csv(args.validated_top5_csv)                                       # Load the validated top 5 candidates CSV into a DataFrame
     s08_3 = pd.read_csv(args.stage08_top3_csv)                                          # Load the Stage 08 top 3 structural metrics into a DataFrame
     s08_5 = pd.read_csv(args.stage08_top5_csv)                                          # Load the Stage 08 top 5 structural metrics into a DataFrame
     context = json.loads(args.context_json.read_text())                                 # Read and decode the project context variables from JSON
-
+    # Concatenate the Stage 08 top 3 and top 5 structural dataframes, sort by rank, and drop duplicate IDs
     stage08 = pd.concat([s08_3, s08_5], ignore_index=True)                              # Concatenate the Stage 08 top 3 and top 5 structural dataframes
     stage08 = stage08.sort_values(["sample_id", "stage08_structural_rank"]).drop_duplicates("sample_id", keep="first") # Sort by rank and drop duplicate IDs
-
+    # Concatenate the validated (07h Stage) top 3 and top 5 dataframes, sort by validated rank, and drop duplicate IDs
     valid = pd.concat([valid3, valid5], ignore_index=True)                              # Concatenate the validated top 3 and top 5 dataframes
     valid = valid.sort_values(["sample_id", "validated_rank"]).drop_duplicates("sample_id", keep="first") # Sort by validated rank and drop duplicate IDs
 
-    keep_cols = [                                                                       # Define a list of essential columns to retain from ranked df
+    # Define a list of essential columns to retain into the final dataframe from ranked df
+    keep_cols = [                                                                       
         "sample_id", "generation_regime", "candidate_sequence", "mutation_positions",   # Include sequence identifiers and mutation tracking columns
         "final_multimodal_rank_score", "target_score", "strict_manifold_score", "structure_score", # Include various scores calculated in earlier stages
         "rank_raw", "rank_diverse"                                                      # Include the raw and diversity-based ranking positions
     ]                                                                                   # Finish defining the list of essential columns
+    
+    # Merge the "validated rank" column from the validated dataframe (07h) into the ranked dataframe (07e), 
+    # keeping only samples that are present in both dataframes (inner join).
     final_df = ranked[keep_cols].merge(valid[["sample_id", "validated_rank"]], on="sample_id", how="inner") # Merge ranked data with validation ranks
+    # Merge this (final) dataframe with the Stage 08 structural metrics, even if some samples are missing structural metrics in stage08 (left join). 
     final_df = final_df.merge(                                                          # Begin merging the resulting dataframe with structural metrics
         stage08[[                                                                       # Select only the specific columns needed from the stage08 dataframe
             "sample_id", "stage08_structural_rank", "esmfold_mean_plddt", "esmfold_ptm",# Include structural ranks and global ESMFold confidence scores
@@ -86,25 +119,32 @@ def main() -> None:
         on="sample_id",                                                                 # Specify that the merge should align on the 'sample_id' key
         how="left",                                                                     # Perform a left join so no rows from final_df are dropped
     )                                                                                   # Finish merging the structural metrics into final_df
+    # Sort the final dataframe by pass, final multimodal rank score (ranked_csv by 07e), pLDDT (08a), and RMSD (08a).
     final_df = final_df.sort_values(                                                    # Begin sorting the fully assembled final dataframe
         ["stage08_pass", "final_multimodal_rank_score", "esmfold_mean_plddt", "rmsd_to_selected_seed"], # Sort hierarchically by pass, score, pLDDT, RMSD
         ascending=[False, False, False, True],                                          # Set sorting orders: descending for best scores, ascending for lowest RMSD
     ).reset_index(drop=True)                                                            # Apply the sorting and reset the dataframe index purely sequentially
+    # Compute and assign final rank and decision labels
     final_df["final_rank"] = np.arange(1, len(final_df) + 1)                            # Generate and assign sequential integers as the absolute final rank
     final_df["final_decision"] = [decision_label(bool(p), int(r)) for p, r in zip(final_df["stage08_pass"], final_df["final_rank"])] # Compute and map decision labels
 
+    # Define the output file paths
     csv_path = args.out_dir / "final_candidate_table.csv"                               # Define the full output file path for the final CSV table
     fasta_path = args.out_dir / "final_top_candidates.fasta"                            # Define the full output file path for the final FASTA file
     md_path = args.out_dir / "final_case_study.md"                                      # Define the full output file path for the Markdown case study
     json_path = args.out_dir / "final_closeout_summary.json"                            # Define the full output file path for the JSON summary
 
+    # Export the final dataframe to CSV and FASTA
     final_df.to_csv(csv_path, index=False)                                              # Export the assembled final dataframe to the defined CSV path
     write_fasta(final_df, fasta_path)                                                   # Invoke the write_fasta helper to generate the FASTA file
 
+    # Prepare the summary dictionary for JSON export
+    # Retract the selected seed ("follow-up" seed that survived Phase A of the host ladder), number of Stage 08a passed candidates, and primary candidates
     selected_seed = context["selected_seed"]                                            # Extract the selected seed dictionary from the context JSON
     pass_count = int(final_df["stage08_pass"].fillna(False).sum())                      # Calculate the total number of candidates that passed Stage 08
     primary = final_df[final_df["final_decision"] == "primary"]                         # Filter the dataframe to isolate only 'primary' categorized candidates
 
+    # Construct the summary dictionary and export to JSON
     summary = {                                                                         # Begin constructing the summary dictionary for JSON export
         "selected_seed": {                                                              # Create a nested dictionary to store properties of the selected seed
             "seed_protein_id": selected_seed.get("seed_protein_id"),                    # Retrieve the selected seed's protein ID
@@ -120,6 +160,7 @@ def main() -> None:
     }                                                                                   # End constructing the summary dictionary
     json_path.write_text(json.dumps(summary, indent=2))                                 # Serialize the dictionary to a formatted JSON string and write to file
 
+    # Export the final case study to Markdown
     md = [                                                                              # Begin compiling a list of strings representing Markdown document lines
         "# Final closeout case study",                                                  # Insert the primary Header 1 for the document
         "",                                                                             # Insert a blank line to maintain proper Markdown formatting
@@ -157,6 +198,7 @@ def main() -> None:
     ])                                                                                  # Finish extending the Markdown document list
     md_path.write_text("\n".join(md))                                                   # Join all Markdown lines with line breaks and save to file
 
+    # Print a summary of the final deliverables
     print(f"Wrote: {csv_path}")                                                         # Print a console notification that the CSV was successfully written
     print(f"Wrote: {fasta_path}")                                                       # Print a console notification that the FASTA was successfully written
     print(f"Wrote: {json_path}")                                                        # Print a console notification that the JSON was successfully written

@@ -37,3 +37,11 @@ mlruns/
 
 # IDE
 .vscode/
+
+# Office & Archives
+*.zip
+*.doc
+*.docx
+
+# Repomix
+*.xml

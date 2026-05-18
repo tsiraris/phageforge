@@ -7,16 +7,12 @@ The output CSV is designed to be directly consumable by the Stage 09 validation 
 """
 
 from __future__ import annotations
-
 import argparse
 from pathlib import Path
-
 import numpy as np
 import pandas as pd
-
 from phageforge.stage07_utils import embed_sequences
 from phageforge.stage09_utils import greedy_diverse_pick, read_json
-
 
 
 def parse_args() -> argparse.Namespace:
@@ -36,9 +32,8 @@ def parse_args() -> argparse.Namespace:
     return ap.parse_args()                                                                                                                            # Parse and return the populated arguments namespace
 
 
-
 def main() -> None:
-    # Read the Stage 09 candidate table and the metadata describing the search that produced it.
+    # Read the Localized Search (09d) candidate table and the metadata describing the search that produced it.
     args = parse_args()                                           # Parse the command-line arguments into the args variable
     search_df = pd.read_csv(args.search_csv)                      # Load the candidate sequences and metrics into a Pandas DataFrame
     search_meta = read_json(args.search_meta_json)                # Load the search metadata dictionary from the associated JSON file
@@ -54,10 +49,11 @@ def main() -> None:
     if keep_df.empty:                                                                                                                                   # Check if all candidates were removed by the filtering steps
         raise ValueError("No Stage 09 candidates survived the structural prefilter. Relax the thresholds or inspect the search outputs.")               # Raise an error if the resulting filtered DataFrame is empty
 
-    # Produce a diverse panel so the expensive structural validator sees several distinct local optima rather than near duplicates.
-    embeddings = embed_sequences(keep_df["candidate_sequence"].astype(str).tolist(), model_name=args.esm_model, batch_size=args.batch_size, max_length=args.max_aa)                   # Generate ESM embeddings for the filtered candidate sequences
-    chosen_idx, diversity_penalty = greedy_diverse_pick(embeddings=embeddings, scores=keep_df["stage09_score"].to_numpy(dtype=np.float32), top_k=args.top_k, penalty_weight=0.25) # Select a diverse top-k subset using the embeddings and target scores
+    # Embedd the candidate sequences and produce a diverse panel so the expensive structural validator sees several distinct local optima rather than near duplicates.
+    embeddings = embed_sequences(keep_df["candidate_sequence"].astype(str).tolist(), model_name=args.esm_model, batch_size=args.batch_size, max_length=args.max_aa)                 # Generate ESM embeddings for the filtered candidate sequences
+    chosen_idx, diversity_penalty = greedy_diverse_pick(embeddings=embeddings, scores=keep_df["stage09_score"].to_numpy(dtype=np.float32), top_k=args.top_k, penalty_weight=0.25)   # Select a diverse top-k subset using the embeddings and target scores
     out_df = keep_df.iloc[chosen_idx].copy().reset_index(drop=True)                                                                                                                 # Create the final DataFrame with the selected diverse candidates, resetting indices
+    # For each candidate, record an applied diversity penalty, a numerical ranking from 1 to top_k, a tag indicating they passed the prefilter, and the score into the final ranking score column 
     out_df["prefilter_diversity_penalty"] = diversity_penalty[chosen_idx] if len(diversity_penalty) else 0.0                                                                        # Record the applied diversity penalty for each chosen candidate
     out_df["prefilter_rank"] = np.arange(1, len(out_df) + 1)                                                                                                                        # Assign a numerical ranking to each candidate from 1 to top_k
     out_df["prefilter_reason"] = "kept_by_stage09_structural_prefilter"                                                                                                             # Tag the rows indicating they successfully passed this prefilter stage

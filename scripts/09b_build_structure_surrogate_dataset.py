@@ -56,7 +56,7 @@ def main() -> None:
     seed_sequence = str(context["selected_seed"]["seed_sequence"])                                                           # Extract the seed sequence as a string from the dictionary
     editable_positions = set(int(x) for x in context["editable_region"].get("hotspot_positions", []))                        # Extract hotspot string positions and cast to a set of integers
 
-    # Merge structural outcomes onto the ranked candidates so every labeled Stage 08 candidate carries its upstream metadata.
+    # Select certain columns from the ranked candidates table (07e), merge them with the (physically folded proteins) structural_csv of 08a, so every labeled Stage 08 candidate carries its upstream metadata.
     merge_cols = [c for c in ["sample_id", "generation_regime", "final_multimodal_rank_score", "target_score"] if c in ranked_df.columns and c in structural_df.columns] # Intersect available columns for merging
     merged = structural_df.merge(ranked_df.drop(columns=["candidate_sequence"], errors="ignore"), on=merge_cols, how="left")                                             # Merge dfs, ignoring original sequence column to avoid duplication
     if "candidate_sequence" not in merged.columns and "candidate_sequence" in structural_df.columns:                                                                     # Check if we dropped sequence entirely but have it in structural
@@ -67,10 +67,14 @@ def main() -> None:
 
     # Compute compact sequence diagnostics so the surrogate can learn which edit patterns tend to fail structurally.
     rows = []                                                                                                                                                            # Initialize list to hold final dataset rows
-    for row in merged.to_dict(orient="records"):                                                                                                                         # Iterate over merged df converted to record dictionaries
+    # Iterate over each row in the merged dataframe converted to a dictionary
+    for row in merged.to_dict(orient="records"):                                                                                                                         
+        # Retrieve the candidate sequence as a string, falling back to an empty string safely
         candidate_sequence = str(row.get("candidate_sequence", "") or "")                                                                                                # Retrieve sequence as string, falling back to empty string safely
+        # For every row in the merged dictionary, compare the candidate sequence to the original wild-type seed and mathematically quantify its biological grammar (e.g., entropy, repetitiveness, mutation spread
         feature_row = build_basic_sequence_features(seed_sequence=seed_sequence, candidate_sequence=candidate_sequence, editable_positions=editable_positions)           # Compute biological sequence differences and features
-        feature_row.update(                                                                                                                                              # Merge sequence features with structural metadata dict
+        # Merge sequence features with structural metadata dict
+        feature_row.update(                                                                                                                                              
             {
                 "sample_id": row.get("sample_id"),                                                                                                                       # Attach sample identifier
                 "generation_regime": row.get("generation_regime", "na"),                                                                                                 # Attach generative model origin string, default to "na"
@@ -82,9 +86,12 @@ def main() -> None:
                 "stage08_decision_reason": str(row.get("stage08_decision_reason", "")),                                                                                  # Attach textual reason for pass/fail decision
             }
         )
+        # Iterate through the global requirement columns 
         for col in FEATURE_COLUMNS:                                                                                                                                      # Iterate through the global requirement columns
+            # If the feature has already been populated, skip to the next iteration
             if col in feature_row:                                                                                                                                       # Check if the feature has already been populated
                 continue                                                                                                                                                 # Skip to the next iteration if so
+            # If the feature has not been populated, extract its raw value, converting NaNs and nulls safely to 0.0 float
             feature_row[col] = float(row.get(col, 0.0)) if pd.notna(row.get(col, 0.0)) else 0.0                                                                          # Extract raw value, converting NaNs and nulls safely to 0.0 float
         rows.append(feature_row)                                                                                                                                         # Push the fully populated dictionary row to the array
 

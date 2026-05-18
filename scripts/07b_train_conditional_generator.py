@@ -3,8 +3,8 @@
 Stage 07b: Train the Stage 07 local conditional masked denoising generator.
 ===========================================================================
 
-This script trains the (fallback) practical local generator model. 
-Trains a model that given a masked protein sequence, plus the target host and family, learns to predict what amino acid should go in the masked positions.
+This script trains the (fallback) practical local conditional generator model. 
+Trains a model that given a masked protein sequence, plus the target host and family (conditioning), learns to predict what amino acid should go in the masked positions.
 The model learns to reconstruct masked amino acids while being conditioned on:
 - host genus
 - scaffold family

@@ -1,4 +1,7 @@
-"""Batch collation helpers for Stage 07 masked-denoising training."""
+"""
+Batch collation helpers for Stage 07 masked-denoising training.
+Builds masked denoising batches for the Stage 07 local conditional generator, hiding 15% of the each sequence.
+"""
 
 from __future__ import annotations                                                   # Delay type annotation evaluation for cleaner typing.
 from typing import List                                                              # Express that the collator receives a list of dataset examples.

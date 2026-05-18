@@ -31,7 +31,6 @@ def parse_args() -> argparse.Namespace:
     return ap.parse_args()                                                                                                                      # Parse the provided command-line arguments and return them
 
 
-
 def main() -> None:
     # Read the Stage 09 prefiltered candidate table and keep only the requested top-k panel for structural validation.
     args = parse_args()                                                                # Retrieve the parsed command-line arguments

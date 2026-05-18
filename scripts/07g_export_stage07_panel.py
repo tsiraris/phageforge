@@ -22,7 +22,7 @@ def parse_args() -> argparse.Namespace:
 
 
 def main() -> None:
-    # Load the final Stage 07 ranked table and choose the intended validation panel.
+    # Load the final Stage 07e ranked table and choose the intended validation panel.
     args = parse_args()                             # Read the command-line arguments for this export run.
     ranked_df = pd.read_csv(args.ranked_csv)        # Read the final Stage 07 ranking table.
     if "selected_for_panel" in ranked_df.columns and ranked_df["selected_for_panel"].any():  # Prefer the explicit diverse panel when available.

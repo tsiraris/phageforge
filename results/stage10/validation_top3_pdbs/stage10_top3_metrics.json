@@ -1,0 +1,12 @@
+{
+  "stage": "10d",
+  "validated_csv": "/home/sagemaker-user/phageforge_clean/results/stage10/prefilter/stage10_top3.csv",
+  "ranked_csv": "/home/sagemaker-user/phageforge_clean/results/stage10/prefilter/stage10_top3.csv",
+  "context_json": "/home/sagemaker-user/phageforge_clean/results/stage10/context/stage10_context.json",
+  "validator_script": "scripts/08a_structural_fasttrack_validation.py",
+  "out_dir": "/home/sagemaker-user/phageforge_clean/results/stage10/validation_top3",
+  "top_k": 3,
+  "device": "cuda",
+  "chunk_size": 128,
+  "num_recycles": 1
+}

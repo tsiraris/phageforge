@@ -24,31 +24,30 @@
       291,
       329,
       334,
+      349,
       373,
-      400,
       401,
-      402,
-      425,
       427,
       505,
-      522,
-      527
+      527,
+      585,
+      592,
+      615
     ],
     "soft_edit_positions": [
+      425,
+      522,
+      402,
+      400,
       338,
-      391,
-      475,
-      179,
-      372,
-      487
+      391
     ],
     "editable_positions": [
-      179,
       291,
       329,
       334,
       338,
-      372,
+      349,
       373,
       391,
       400,
@@ -56,11 +55,12 @@
       402,
       425,
       427,
-      475,
-      487,
       505,
       522,
-      527
+      527,
+      585,
+      592,
+      615
     ],
     "frozen_positions": [
       1,
@@ -241,6 +241,7 @@
       176,
       177,
       178,
+      179,
       180,
       181,
       182,
@@ -406,7 +407,6 @@
       346,
       347,
       348,
-      349,
       350,
       351,
       352,
@@ -429,6 +429,7 @@
       369,
       370,
       371,
+      372,
       374,
       375,
       376,
@@ -524,6 +525,7 @@
       472,
       473,
       474,
+      475,
       476,
       477,
       478,
@@ -535,6 +537,7 @@
       484,
       485,
       486,
+      487,
       488,
       489,
       490,
@@ -629,14 +632,12 @@
       582,
       583,
       584,
-      585,
       586,
       587,
       588,
       589,
       590,
       591,
-      592,
       593,
       594,
       595,
@@ -659,7 +660,6 @@
       612,
       613,
       614,
-      615,
       616,
       617,
       618,
@@ -1046,7 +1046,7 @@
         "functional_weight": 0.4877049073081935,
         "conservation_penalty": 0.0,
         "region_name": "window_404_427",
-        "edit_tier": "hard"
+        "edit_tier": "soft"
       },
       {
         "position": 522,
@@ -1084,7 +1084,7 @@
         "functional_weight": 0.4837011485684009,
         "conservation_penalty": 0.75,
         "region_name": "ungrouped",
-        "edit_tier": "hard"
+        "edit_tier": "soft"
       },
       {
         "position": 402,
@@ -1121,7 +1121,7 @@
         "functional_weight": 0.4813698291276969,
         "conservation_penalty": 0.25,
         "region_name": "window_391_414",
-        "edit_tier": "hard"
+        "edit_tier": "soft"
       },
       {
         "position": 400,
@@ -1158,7 +1158,7 @@
         "functional_weight": 0.4768493843329456,
         "conservation_penalty": 0.75,
         "region_name": "window_391_414",
-        "edit_tier": "hard"
+        "edit_tier": "soft"
       },
       {
         "position": 338,
@@ -1272,7 +1272,7 @@
         "functional_weight": 0.4668199445739548,
         "conservation_penalty": 0.75,
         "region_name": "ungrouped",
-        "edit_tier": "soft"
+        "edit_tier": "frozen"
       },
       {
         "position": 179,
@@ -1304,7 +1304,7 @@
         "functional_weight": 0.46529091327507716,
         "conservation_penalty": 1.0,
         "region_name": "ungrouped",
-        "edit_tier": "soft"
+        "edit_tier": "frozen"
       },
       {
         "position": 372,
@@ -1339,7 +1339,7 @@
         "functional_weight": 0.4631573962417239,
         "conservation_penalty": 0.75,
         "region_name": "ungrouped",
-        "edit_tier": "soft"
+        "edit_tier": "frozen"
       },
       {
         "position": 487,
@@ -1376,7 +1376,7 @@
         "functional_weight": 0.4629640220565036,
         "conservation_penalty": 0.75,
         "region_name": "ungrouped",
-        "edit_tier": "soft"
+        "edit_tier": "frozen"
       },
       {
         "position": 374,
@@ -2573,7 +2573,7 @@
         "functional_weight": 0.3825149341349014,
         "conservation_penalty": 0.75,
         "region_name": "ungrouped",
-        "edit_tier": "frozen"
+        "edit_tier": "hard"
       },
       {
         "position": 447,
@@ -2727,7 +2727,7 @@
         "functional_weight": 0.3756639374559275,
         "conservation_penalty": 0.5,
         "region_name": "ungrouped",
-        "edit_tier": "frozen"
+        "edit_tier": "hard"
       },
       {
         "position": 569,
@@ -6827,7 +6827,7 @@
         "functional_weight": 0.31259485588529834,
         "conservation_penalty": 0.5,
         "region_name": "ungrouped",
-        "edit_tier": "frozen"
+        "edit_tier": "hard"
       },
       {
         "position": 457,
@@ -14523,7 +14523,7 @@
         "functional_weight": 0.22764019857911538,
         "conservation_penalty": 0.75,
         "region_name": "ungrouped",
-        "edit_tier": "frozen"
+        "edit_tier": "hard"
       },
       {
         "position": 601,

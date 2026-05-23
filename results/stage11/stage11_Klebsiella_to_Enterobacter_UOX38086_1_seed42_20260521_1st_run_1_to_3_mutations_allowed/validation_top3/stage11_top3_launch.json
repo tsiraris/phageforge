@@ -1,0 +1,22 @@
+{
+  "stage": "11d",
+  "validated_csv": "/home/sagemaker-user/phageforge_clean/results/stage11/Klebsiella_to_Enterobacter_UOX38086_1_seed42_20260521T092838Z/prefilter/stage11_top3.csv",
+  "ranked_csv": "/home/sagemaker-user/phageforge_clean/results/stage11/Klebsiella_to_Enterobacter_UOX38086_1_seed42_20260521T092838Z/prefilter/stage11_top3.csv",
+  "context_json": "/home/sagemaker-user/phageforge_clean/results/stage11/Klebsiella_to_Enterobacter_UOX38086_1_seed42_20260521T092838Z/context/stage11_context.json",
+  "validator_script": "/home/sagemaker-user/phageforge_clean/scripts/08a_structural_fasttrack_validation.py",
+  "out_dir": "/home/sagemaker-user/phageforge_clean/results/stage11/Klebsiella_to_Enterobacter_UOX38086_1_seed42_20260521T092838Z/validation_top3",
+  "top_k": 3,
+  "device": "cuda",
+  "chunk_size": 128,
+  "num_recycles": 1,
+  "resume": false,
+  "validator_exit_code": 0,
+  "start_timestamp_utc": "2026-05-21T10:36:55Z",
+  "end_timestamp_utc": "2026-05-21T10:43:11Z",
+  "expected_outputs": {
+    "summary_csv": "/home/sagemaker-user/phageforge_clean/results/stage11/Klebsiella_to_Enterobacter_UOX38086_1_seed42_20260521T092838Z/validation_top3/stage08_structural_fasttrack_summary.csv",
+    "summary_json": "/home/sagemaker-user/phageforge_clean/results/stage11/Klebsiella_to_Enterobacter_UOX38086_1_seed42_20260521T092838Z/validation_top3/stage08_structural_fasttrack_summary.json",
+    "report_md": "/home/sagemaker-user/phageforge_clean/results/stage11/Klebsiella_to_Enterobacter_UOX38086_1_seed42_20260521T092838Z/validation_top3/stage08_structural_fasttrack_report.md",
+    "pdb_dir": "/home/sagemaker-user/phageforge_clean/results/stage11/Klebsiella_to_Enterobacter_UOX38086_1_seed42_20260521T092838Z/validation_top3/pdbs"
+  }
+}

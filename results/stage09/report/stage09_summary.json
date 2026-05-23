@@ -1,0 +1,14 @@
+{
+  "summary": {
+    "n_search_candidates": 90,
+    "n_prefilter_candidates": 12,
+    "n_validated_candidates": 10,
+    "stage09_pass_count": 0,
+    "stage09_pass_rate": 0.0,
+    "stage09_mean_plddt": 0.2235294833779335,
+    "stage09_mean_mutation_site_plddt": 0.2232499999999999,
+    "stage09_mean_rmsd": 13.143421938531526,
+    "stage09_mean_target_probability": 0.02753725233333333
+  },
+  "baseline": null
+}

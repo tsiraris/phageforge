@@ -1,0 +1,125 @@
+{
+ "stage": "11e",
+ "run_metadata": {
+  "seed_protein_id": "UOX38086.1",
+  "seed_length": 806,
+  "source_host": "Klebsiella",
+  "target_host": "Enterobacter",
+  "family_member_count": 21,
+  "target_member_count": 1,
+  "hard_positions": [
+   300,
+   328,
+   354,
+   422,
+   561,
+   615,
+   656,
+   768
+  ],
+  "soft_positions": [
+   360,
+   574,
+   642
+  ],
+  "mutation_budget": [
+   4,
+   10
+  ]
+ },
+ "baseline_qualification": {
+  "passed": true,
+  "reason": "Seed mean pLDDT=81.057 passes threshold 70.000.",
+  "min_plddt_threshold": 70.0,
+  "seed_mean_plddt": 81.05707196029776,
+  "seed_per_residue_plddt_summary": {
+   "min": 36.0,
+   "p10": 58.0,
+   "median": 85.0,
+   "max": 98.0
+  },
+  "n_residues": 806,
+  "device_used": "cuda",
+  "elapsed_seconds": 137.27441596984863,
+  "seed_pdb_path": "/home/sagemaker-user/phageforge_clean/results/stage11/Klebsiella_to_Enterobacter_UOX38086_1_seed42_20260521/context/seed_wt.pdb",
+  "seed_protein_id": "UOX38086.1"
+ },
+ "search_summary": {
+  "rows": 662,
+  "rounds_completed": 6,
+  "best_composite_score": 0.9322411,
+  "best_target_probability": 0.22953925,
+  "best_if1_log_likelihood": -1.8635186,
+  "best_seed_identity": 0.9987593052109182,
+  "mutation_count_histogram": {
+   "4": 150,
+   "6": 149,
+   "5": 147,
+   "3": 138,
+   "2": 68,
+   "1": 10
+  }
+ },
+ "prefilter_summary": {
+  "rows": 10,
+  "top_sample_ids": [
+   1,
+   2,
+   3,
+   4,
+   5,
+   6,
+   7,
+   8,
+   9,
+   10
+  ]
+ },
+ "stage11_validation": {
+  "rows": 3,
+  "pass_count": 3,
+  "best_mean_plddt": 79.0409429280397,
+  "mean_mean_plddt": 78.89950372208438,
+  "best_mutation_site_mean_plddt": 71.75,
+  "best_rmsd": 1.079207262128164,
+  "mean_rmsd": 1.1828506493238258,
+  "best_mut_count": 4
+ },
+ "comparative": {
+  "stage08": {
+   "rows": 0,
+   "pass_count": 0,
+   "best_mean_plddt": null,
+   "mean_mean_plddt": null,
+   "best_mutation_site_mean_plddt": null,
+   "best_rmsd": null,
+   "mean_rmsd": null,
+   "best_mut_count": null
+  },
+  "stage09": {
+   "rows": 0,
+   "pass_count": 0,
+   "best_mean_plddt": null,
+   "mean_mean_plddt": null,
+   "best_mutation_site_mean_plddt": null,
+   "best_rmsd": null,
+   "mean_rmsd": null,
+   "best_mut_count": null
+  },
+  "stage10": {
+   "rows": 0,
+   "pass_count": 0,
+   "best_mean_plddt": null,
+   "mean_mean_plddt": null,
+   "best_mutation_site_mean_plddt": null,
+   "best_rmsd": null,
+   "mean_rmsd": null,
+   "best_mut_count": null
+  }
+ },
+ "verdict": {
+  "category": "supported",
+  "description": "3/3 Stage 11 candidates passed all six 08a hard thresholds. The Baseline Qualification hypothesis is supported: anchoring inverse-folding on a structurally healthy wild-type seed yields candidates that retain the fold (high pLDDT, low RMSD) while carrying the targeted edits.",
+  "pass_rate": 1.0
+ }
+}

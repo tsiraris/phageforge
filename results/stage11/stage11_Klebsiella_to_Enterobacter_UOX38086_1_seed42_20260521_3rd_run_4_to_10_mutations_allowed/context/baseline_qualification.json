@@ -1,0 +1,17 @@
+{
+  "passed": true,
+  "reason": "Seed mean pLDDT=81.057 passes threshold 70.000.",
+  "min_plddt_threshold": 70.0,
+  "seed_mean_plddt": 81.05707196029776,
+  "seed_per_residue_plddt_summary": {
+    "min": 36.0,
+    "p10": 58.0,
+    "median": 85.0,
+    "max": 98.0
+  },
+  "n_residues": 806,
+  "device_used": "cuda",
+  "elapsed_seconds": 137.27441596984863,
+  "seed_pdb_path": "/home/sagemaker-user/phageforge_clean/results/stage11/Klebsiella_to_Enterobacter_UOX38086_1_seed42_20260521/context/seed_wt.pdb",
+  "seed_protein_id": "UOX38086.1"
+}

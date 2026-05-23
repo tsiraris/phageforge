@@ -93,8 +93,6 @@ def write_json(obj: dict, path: str | Path) -> None:
 
 def resolve_seed_pdb(seed_pdb: str | Path | None, validation_dir: str | Path | None) -> Path:
     """
-    Resolve the seed scaffold PDB path from an explicit file or a validation directory.
-
     Locates the exact physical 3D coordinate file (.pdb) that will act as the fixed scaffold.
     
     If a direct file path is provided, it validates it. If only a directory is provided, 
@@ -566,6 +564,11 @@ def composite_stage10_score(
     family_cosine: np.ndarray,
     seed_identity: np.ndarray,
     mutation_count: np.ndarray,
+    w_target: float = 0.30,                                                                                                 # Tunable weight; default reproduces the original hardcoded Stage 10 formula exactly
+    w_if1: float = 0.45,                                                                                                    # Tunable weight; default reproduces the original hardcoded Stage 10 formula exactly
+    w_family: float = 0.15,                                                                                                 # Tunable weight; default reproduces the original hardcoded Stage 10 formula exactly
+    w_identity: float = 0.10,                                                                                               # Tunable weight; default reproduces the original hardcoded Stage 10 formula exactly
+    w_mut_penalty: float = 0.10,                                                                                            # Tunable weight; default reproduces the original hardcoded Stage 10 formula exactly
 ) -> np.ndarray:
     """
     Combine Stage 10 signals into one ranking score.
@@ -588,7 +591,7 @@ def composite_stage10_score(
     mut_penalty = robust_minmax(mutation_count)                                                                             # Scales the edit burden volume cleanly between zero and one
     
     # --- Computes the heavily-weighted structural survival calculus ---
-    return 0.30 * target_norm + 0.45 * if1_norm + 0.15 * family_norm + 0.10 * identity_norm - 0.10 * mut_penalty            # Mathematically blends the normalized metrics, granting supreme authority to the 3D physics engine while punishing excessive deviation
+    return w_target * target_norm + w_if1 * if1_norm + w_family * family_norm + w_identity * identity_norm - w_mut_penalty * mut_penalty   # Weighted blend (weights now tunable; defaults grant supreme authority to the 3D physics engine while punishing excessive deviation)
 
 
 def greedy_diverse_subset(embeddings: np.ndarray, scores: np.ndarray, top_k: int) -> list[int]:

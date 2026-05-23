@@ -348,7 +348,7 @@ def fold_sequence(seq: str, tokenizer, model, torch, device: str, chunk_size: in
     # Extract the per-residue pLDDT array
     plddt = outputs["plddt"][0].detach().cpu().numpy()                             
     # Calculate the average pLDDT across the whole protein
-    mean_plddt = float(np.asarray(plddt).mean())                                   
+    mean_plddt = float(np.asarray(plddt).mean()) * 100.0                            # SCALE FIX: HF ESMFold returns plddt on 0–1; multiply to match the 70.0 gate.
     # Extract pTM score if present, else assign NaN
     ptm = _scalar_tensor_to_float(outputs["ptm"]) if "ptm" in outputs else math.nan 
     return pdb_text, mean_plddt, ptm            # Return the PDB text, mean confidence, and pTM
@@ -385,7 +385,7 @@ def parse_ca_coords_and_plddt(pdb_text: str):
         x = float(line[30:38].strip())                                        # Parse the X coordinate
         y = float(line[38:46].strip())                                        # Parse the Y coordinate
         z = float(line[46:54].strip())                                        # Parse the Z coordinate
-        b = float(line[60:66].strip())                                        # Parse the B-factor column (which holds pLDDT here)
+        b = float(line[60:66].strip()) * 100.0                                # SCALE FIX: PDB B-factor stored on 0–1 by HF ESMFold; rescale to match the 70.0 gate.
         coords.append([x, y, z])                                              # Append the 3D coordinate list
         plddts.append(b)                                                      # Append the pLDDT score
         residues.append(resid)                                                # Append the residue index
@@ -618,6 +618,7 @@ def main() -> None:
         )                                                                                  # Close function call
         seed_pdb_path.write_text(seed_pdb)                                                 # Save the newly generated PDB to disk
         seed_coords, seed_plddts, _ = parse_ca_coords_and_plddt(seed_pdb)                  # Extract coordinates and metrics from output
+        seed_plddt = float(np.mean(seed_plddts)) if len(seed_plddts) else math.nan         # CONSISTENCY FIX: recompute the seed mean pLDDT from per-residue C-alpha values (0-100 scale), matching the Stage 11a baseline gate and the resume branch above
 
     # Iterate through the merged dataframe evaluating every candidate in the top-tier shortlist.
     rows = []                                                                              # Initialize list to hold metrics per candidate
@@ -643,6 +644,7 @@ def main() -> None:
             )                                                                              # Close function call
             pdb_path.write_text(pdb_text)                                                  # Save predicted structure to disk
             coords, plddts, residues = parse_ca_coords_and_plddt(pdb_text)                 # Parse new structure data
+            mean_plddt = float(np.mean(plddts)) if len(plddts) else math.nan               # CONSISTENCY FIX: recompute the global mean pLDDT from per-residue C-alpha values (0-100 scale) so freshly-folded candidates use the same convention as the baseline gate and the resume branch, instead of the lower all-atom average from fold_sequence
 
         # Compute structural drift from seed (Kabsch RMSD), fraction of confident mutations (% of mutated residues with pLDDT > 70), 
         # mean pLDDT of mutations, and the fraction of illegal edits (outside the editable region).

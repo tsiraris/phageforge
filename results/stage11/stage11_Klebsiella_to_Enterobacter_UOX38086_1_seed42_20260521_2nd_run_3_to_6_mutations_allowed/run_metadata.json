@@ -1,0 +1,80 @@
+{
+  "stage": "11a",
+  "timestamp_utc": "2026-05-21T14:44:06Z",
+  "cli_args": {
+    "strict_csv": "/home/sagemaker-user/phageforge_clean/data/processed/rbp_dataset_eskapee_strict.csv",
+    "seed_protein_id": "UOX38086.1",
+    "source_host": "Klebsiella",
+    "target_host": "Enterobacter",
+    "out_dir": "/home/sagemaker-user/phageforge_clean/results/stage11/Klebsiella_to_Enterobacter_UOX38086_1_seed42_20260521",
+    "strict_embeddings": "/home/sagemaker-user/phageforge_clean/data/processed/strict/esm2_embeddings.pt",
+    "strict_embeddings_index": "/home/sagemaker-user/phageforge_clean/data/processed/strict/esm2_embeddings_index.csv",
+    "reuse_cached_embeddings": false,
+    "predictor_model": "/home/sagemaker-user/phageforge_clean/results/broad/linear_probe/seed_42/model.joblib",
+    "predictor_label_classes": "/home/sagemaker-user/phageforge_clean/results/broad/linear_probe/seed_42/label_classes.json",
+    "embedding_model": "facebook/esm2_t33_650M_UR50D",
+    "esmfold_device": "cuda",
+    "esmfold_chunk_size": 128,
+    "esmfold_num_recycles": 1,
+    "min_seed_plddt": 70.0,
+    "family_top_n": 32,
+    "target_top_m": 8,
+    "family_cosine_floor": 0.85,
+    "length_tolerance": 0.05,
+    "max_edit_positions": 6,
+    "soft_positions": 3,
+    "min_mutations": 3,
+    "max_mutations": 6,
+    "entropy_floor": 0.2,
+    "family_top_k": 4,
+    "target_top_k": 4,
+    "max_allowed_aas_per_pos": 6,
+    "region_block": 50,
+    "seed": 42,
+    "run_name": "Klebsiella_to_Enterobacter_UOX38086_1_seed42_20260521"
+  },
+  "python": {
+    "version": "3.12.13 | packaged by conda-forge | (main, Mar  5 2026, 16:50:00) [GCC 14.3.0]",
+    "executable": "/opt/conda/bin/python",
+    "platform": "Linux-6.1.170-210.320.amzn2023.x86_64-x86_64-with-glibc2.39"
+  },
+  "host": {
+    "hostname": "default"
+  },
+  "gpu": {
+    "cuda_available": true,
+    "torch_version": "2.8.0",
+    "gpu_name": "NVIDIA A10G",
+    "gpu_count": 1
+  },
+  "packages": {
+    "torch": "2.8.0",
+    "transformers": "4.57.6",
+    "fair-esm": "2.0.0",
+    "scikit-learn": "1.7.2",
+    "biopython": "1.87",
+    "numpy": "1.26.4",
+    "pandas": "2.3.3"
+  },
+  "git_commit": "unknown",
+  "run_name": "Klebsiella_to_Enterobacter_UOX38086_1_seed42_20260521",
+  "strict_embeddings_source": "fresh",
+  "family_member_count": 21,
+  "target_member_count": 1,
+  "hard_positions": [
+    300,
+    328,
+    354,
+    561,
+    615,
+    656
+  ],
+  "soft_positions": [
+    360,
+    574,
+    642
+  ],
+  "seed_mean_plddt": 81.05707196029776,
+  "seed_pdb_path": "/home/sagemaker-user/phageforge_clean/results/stage11/Klebsiella_to_Enterobacter_UOX38086_1_seed42_20260521/context/seed_wt.pdb",
+  "context_json_path": "/home/sagemaker-user/phageforge_clean/results/stage11/Klebsiella_to_Enterobacter_UOX38086_1_seed42_20260521/context/stage11_context.json"
+}

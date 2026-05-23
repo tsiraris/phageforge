@@ -1,0 +1,17 @@
+{
+  "stage": "09d",
+  "context_json": "stage07/context/stage07_context.base.json",
+  "edit_space_json": "results/stage09/edit_space/stage09_edit_space.json",
+  "predictor_model": "seed_42/model.joblib",
+  "surrogate_model": null,
+  "target_host": "Acinetobacter",
+  "n_candidates": 90,
+  "rounds_completed": 4,
+  "score_weights": {
+    "w_target": 0.45,
+    "w_family": 0.15,
+    "w_seed": 0.15,
+    "w_guidance": 0.1,
+    "w_surrogate": 0.15
+  }
+}

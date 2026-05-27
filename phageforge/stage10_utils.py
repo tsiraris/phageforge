@@ -594,7 +594,7 @@ def composite_stage10_score(
     return w_target * target_norm + w_if1 * if1_norm + w_family * family_norm + w_identity * identity_norm - w_mut_penalty * mut_penalty   # Weighted blend (weights now tunable; defaults grant supreme authority to the 3D physics engine while punishing excessive deviation)
 
 
-def greedy_diverse_subset(embeddings: np.ndarray, scores: np.ndarray, top_k: int) -> list[int]:
+def greedy_diverse_subset(embeddings: np.ndarray, scores: np.ndarray, top_k: int, diversity_penalty_weight: float = 0.20) -> list[int]:
     """
     Choose a diversity-aware top-k subset from candidate embeddings.
 
@@ -629,7 +629,7 @@ def greedy_diverse_subset(embeddings: np.ndarray, scores: np.ndarray, top_k: int
         best_value = -math.inf                                                                                              # Prepares an infinitely negative baseline score that the candidates must beat to take the lead
         for idx in remaining:                                                                                               # Iterates sequentially through every single candidate still waiting in the eligible pool
             nearest = max(float(np.dot(normed[idx], normed[picked])) for picked in chosen)                                  # Calculates the spatial distance to all previously selected victors and isolates the most similar one (the highest proximity threat)
-            value = float(scores[idx]) - 0.20 * nearest                                                                     # Radically slashes the candidate's fitness score based on how closely it mirrors the sequences already drafted to the panel
+            value = float(scores[idx]) - diversity_penalty_weight * nearest                                                                     # Radically slashes the candidate's fitness score based on how closely it mirrors the sequences already drafted to the panel
             if value > best_value:                                                                                          # Checks if this heavily penalized score is still somehow the highest number evaluated during this specific round
                 best_value = value                                                                                          # Overwrites the benchmark with the new leading score
                 best_idx = idx                                                                                              # Transfers the temporary crown to the current candidate's index

@@ -6,8 +6,7 @@ It exists so Stage 11 stays operationally consistent with the earlier project st
 keeping the final heavy structural check delegated to the established validation script.
 
 The subprocess isolation is important: it reclaims VRAM between the embedding
-backbone (Stage 11b) and ESMFold (08a), preventing OOM crashes on
-ml.g5.xlarge / 2xlarge SageMaker boxes.
+backbone (Stage 11b) and ESMFold (08a), preventing OOM crashes on SageMaker boxes.
 """
 
 from __future__ import annotations
@@ -47,6 +46,7 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> None:
     args = parse_args()                                                                                                    # Process user-provided arguments into a local namespace
+    # Resolve the absolute filesystem path for the structural validator and the input data panel
     validator = Path(args.validator_script).resolve()                                                                      # Resolve the absolute filesystem path for the structural validator
     if not validator.exists():                                                                                             # Check if the requested script exists on the current host
         print(f"[ERROR] Missing validator script: {validator}", file=sys.stderr)                                           # Report pathing errors to standard error output
@@ -67,6 +67,7 @@ def main() -> None:
     out_dir = Path(args.out_dir).resolve()                                                                                 # Finalize the target root directory for 3D coordinate storage
     out_dir.mkdir(parents=True, exist_ok=True)                                                                             # Instantiate the output directory tree on the filesystem
 
+    # Initiate the subprocess command array
     cmd = [                                                                                                                # Initiate the subprocess command array construction
         sys.executable,                                                                                                    # Identify the current running Python executable
         str(validator),                                                                                                    # Pass the validator script as the primary argument
@@ -79,9 +80,11 @@ def main() -> None:
         "--chunk_size", str(int(args.chunk_size)),                                                                         # Provide memory protection chunking parameters
         "--num_recycles", str(int(args.num_recycles)),                                                                     # Provide spatial coordinate refinement cycles
     ]                                                                                                                      # Terminate the primary command argument list
+    # If the structural caching mode is enabled, indicate that to the validator
     if args.resume:                                                                                                        # Assess if structural caching mode is enabled by operator
         cmd.append("--resume")                                                                                             # Append the caching flag to the system execution list
 
+    # Monitor the structural validation process during execution
     print(f"[INFO] Launching Stage 08a validator: {' '.join(cmd)}", flush=True)                                            # Output the full system command for transparent logging
     start_ts = datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z")                             # Timestamp the start time for archival purposes
 
@@ -93,6 +96,7 @@ def main() -> None:
 
     end_ts = datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z")                               # Timestamp the conclusion of the structural evaluation process
 
+    # If the structural validator completed successfully, log the run metadata into a JSON metadata file                                                                                      # Assess if the structural validator completed successfully
     summary = {                                                                                                            # Begin documenting the execution metadata locally
         "stage": "11d",                                                                                                    # Define the stage identification metadata
         "validated_csv": str(validated_csv),                                                                               # Pin the provenance of the input data

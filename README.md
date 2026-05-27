@@ -85,12 +85,10 @@ Stage 11 deliberately abandons upstream sequence-first hallucinations in favor o
 3. define an aggressively minimized hard/soft edit space computed completely from scratch
 4. query the ESM-IF1 inverse-folding model for substitutions that thermodynamically stabilize that specific, validated 3D geometry
 5. score candidates with a physics-heavy composite:
-* 3D backbone log-likelihood (ESM-IF1)
-* target-host probability (ESM2 + LR)
-* family evolutionary cosine
-* sequence identity preservation
-
-
+   * 3D backbone log-likelihood (ESM-IF1)
+   * target-host probability (ESM2 + LR)
+   * family evolutionary cosine
+   * sequence identity preservation
 6. prefilter survivors using a two-pass greedy-diverse embedding space algorithm
 7. send the elite panel to the exact same full structural validator used in Stage 08
 
@@ -103,38 +101,30 @@ The point of Stage 11 is to guarantee that the inverse-folding engine is only fe
 The Stage 11 update introduces the following generative architecture capabilities:
 
 * **autonomous baseline qualification**
-* the pipeline explicitly tests its own wild-type starting materials, refusing to spend compute cycles redesigning natively brittle or collapsed proteins
-
+  * the pipeline explicitly tests its own wild-type starting materials, refusing to spend compute cycles redesigning natively brittle or collapsed proteins
 
 * **full self-containment**
-* the family centroid, target centroid, edit space, and per-position priors are all recomputed in-stage from the strict CSV, the cached ESM-2 embeddings, and the trained host probe
-* no JSON context, edit space, or surrogate model from Stages 06/07/09/10 is read, so a single early defect cannot silently propagate downstream
-
+  * the family centroid, target centroid, edit space, and per-position priors are all recomputed in-stage from the strict CSV, the cached ESM-2 embeddings, and the trained host probe
+  * no JSON context, edit space, or surrogate model from Stages 06/07/09/10 is read, so a single early defect cannot silently propagate downstream
 
 * **explicit 3D scaffold anchoring**
-* the sequence generation is locked mathematically to the X, Y, Z coordinates of the freshly validated `seed_wt.pdb` file
-* the mutation budget is kept deliberately small (configurable; runs to date used 1-10 edits) to prioritize fold retention
-
+  * the sequence generation is locked mathematically to the X, Y, Z coordinates of the freshly validated `seed_wt.pdb` file
+  * the mutation budget is kept deliberately small (configurable; runs to date used 1-10 edits) to prioritize fold retention
 
 * **inverse-folding beam search**
-* replaces the sequence language model (ESM3/ESM2) with a Graph Neural Network (ESM-IF1)
-* structural stability is no longer guessed via proxies; it is simulated dynamically
-
+  * replaces the sequence language model (ESM3/ESM2) with a Graph Neural Network (ESM-IF1)
+  * structural stability is no longer guessed via proxies; it is simulated dynamically
 
 * **composite 3D fitness scoring**
-* scores candidates primarily by physical backbone compatibility (`if1_log_likelihood`) rather than additive heuristic metrics
-* the five composite weights are exposed as CLI parameters and default to the canonical Stage 10 values; leaving them unchanged reproduces the built-in formula exactly
-
+  * scores candidates primarily by physical backbone compatibility (`if1_log_likelihood`) rather than additive heuristic metrics
+  * the five composite weights are exposed as CLI parameters and default to the canonical Stage 10 values; leaving them unchanged reproduces the built-in formula exactly
 
 * **diversity-aware prefiltering**
-* utilizes a robust two-pass `greedy_diverse_subset` clustering to guarantee the final validation panel represents distinct structural hypotheses, preventing mode collapse
-
+  * utilizes a robust two-pass `greedy_diverse_subset` clustering to guarantee the final validation panel represents distinct structural hypotheses, preventing mode collapse
 
 * **wrapper-based scientific coherence**
-* executes the heavy ESMFold validation via a sterile subprocess wrapper, isolating VRAM between embeddings and structural physics
-* intentionally reuses the unmodified Stage 08 validator to prove any observed improvements are scientifically genuine
-
-
+  * executes the heavy ESMFold validation via a sterile subprocess wrapper, isolating VRAM between embeddings and structural physics
+  * intentionally reuses the unmodified Stage 08 validator to prove any observed improvements are scientifically genuine
 
 ---
 
@@ -182,7 +172,7 @@ phageforge/
 │   ├── stage08_closeout_sagemaker.ipynb
 │   ├── stage09_structure_aware_redesign_sagemaker.ipynb
 │   ├── stage10_inverse_folding_sagemaker.ipynb
-│   └── stage11_autonomous_redesign_sagemaker.ipynb
+│   └── stage11_collective_sweep_sagemaker.ipynb
 │
 ├── pyproject.toml
 └── README.md
@@ -335,19 +325,43 @@ A unit-scale bug in the structural validator masked Stage 11's true outcome and 
 
 ESMFold (HuggingFace) emits pLDDT on a 0–1 scale, but the validator compared the stored value against the canonical `70.0` gate and, separately, averaged confidence over all 37 atom slots per residue (including non-existent padding atoms). The combined effect was that **every candidate failed `low_global_confidence` automatically**, superficially echoing the genuine Stage 08–10 collapses.
 
-The fix recomputes every confidence metric on the canonical 0–100 per-residue Cα convention — the same convention the Stage 11a Baseline Qualification gate uses. With the correction applied, the verdicts flip from `0/N` to the true pass rates reported below. The seed itself folds at mean pLDDT ≈ 79.
+The fix recomputes every confidence metric on the canonical 0–100 per-residue Cα convention — the same convention the Stage 11a Baseline Qualification gate uses. With the correction applied, the verdicts flip from `0/N` to the true pass rates reported below.
 
 ---
 
 ## Stage 11 results
 
-For the Klebsiella → Enterobacter retargeting (seed `UOX38086.1`, 806 aa), with the validator corrected to the canonical pLDDT convention:
+The pipeline was closed out with a **multi-seed validation sweep**: seven wild-type RBP seeds spanning three source genera, all retargeting *Enterobacter*, run end-to-end (11a→11d) under identical default weights and a fixed search configuration. The only variable is the seed.
 
-* **Baseline Qualification:** PASS — wild-type seed folds at mean pLDDT ≈ 79, comfortably clearing the 70.0 gate (contrast: the historical Stage 06 chassis folds at very low confidence).
-* **Structural pass rate:** the final top-3 panel reached **3/3 passing all six Stage 08 hard gates**, with mean pLDDT ≈ 79, mutation-site pLDDT ≈ 69–72, and RMSD < 1.6 Å to the seed.
-* **Minimal-edit retargeting:** passing candidates carry only 2–5 substitutions on an 806-residue protein, confirming that inverse folding retains the wild-type fold while introducing the targeted edits.
+![Wild-type seed (gray) and the ESM-IF1 minimal-edit redesign (blue) superposed for QIA28516.1.](results/stage11_sweep/figures/Hero_image_QIA28516 seed-vs-candidate_2 superposition (the 0.188 Å).png)
 
-Run-to-run variation across the search experiments was driven by the **mutation budget** and **search breadth** (rounds, beam width, proposals), together with the pLDDT-scale correction — not by composite re-weighting (see *Current limitations*).
+*Surface superposition of the wild-type seed (gray) and the structurally validated 2-substitution redesign (blue) for the standout seed QIA28516.1. The two surfaces are near-coincident — RMSD 0.19 Å — illustrating that minimal, targeted edits leave the fold essentially unchanged.*
+
+### Per-seed outcome
+
+| Seed | Source genus | Length | Gate | Seed pLDDT | Top-3 | Best cand. pLDDT | Best RMSD (Å) | Edits | Identity | Best target_p |
+|---|---|---|---|---|---|---|---|---|---|---|
+| QIA28516.1 | *Staphylococcus* | 481 | PASS | 88.1 | 3/3 | 88.7 | 0.19 | 2 | 99.6% | 0.175 |
+| UOX38086.1 | *Klebsiella* | 806 | PASS | 81.1 | 3/3 | 78.8 | 1.27 | 3–4 | 99.5% | 0.220 |
+| UAW09916.1 | *Acinetobacter* | 841 | PASS | 74.0 | 3/3 | 72.9 | 1.28 | 6 | 99.3% | 0.099 |
+| WLY86866.1 | *Staphylococcus* | 641 | REJECT | 69.4 | — | — | — | — | — | — |
+| QFR57578.1 | *Klebsiella* | 658 | REJECT | 23.9 | — | — | — | — | — | — |
+| WWD14686.1 | *Klebsiella* | 659 | REJECT | 22.5 | — | — | — | — | — | — |
+| WWD13915.1 | *Klebsiella* | 658 | REJECT | 22.3 | — | — | — | — | — | — |
+
+![Per-seed top-3 structural pass rate (bars) and seed foldability (line).](results/stage11_sweep/figures/sweep_passrate.png)
+
+*Multi-seed sweep. The Baseline Qualification gate rejects collapsed/low-confidence chassis (pLDDT ~22, plus one borderline near-miss at 69.4) and admits only foldable wild-types; every admitted seed then yields a 3/3 top-3 pass.*
+
+* **Baseline Qualification gate did real work.** Across the 7 seeds the gate **passed 3** robust wild-types (pLDDT 74–88) and **rejected 4** — three that fold at only ~22–24 pLDDT and one borderline near-miss at 69.4. Critically, the three collapsed seeds are *curated wild-type sequences from the strict dataset*, not synthetic noise: this shows empirically that "wild-type" does **not** imply "foldable," and that the gate is a necessary guard, not a formality. (A controlled check confirms the mechanism: the intact anchor folds at 81 and **passes**; the same residues shuffled fold at 20 and are **rejected** — a ~61-point separation that lands the shuffle squarely in the historical Stage 06 collapse regime.)
+* **Generalization across qualified seeds: 9/9.** All three baseline-qualified seeds — *Acinetobacter*, *Klebsiella*, *Staphylococcus*, 481–841 aa — reached a **3/3 top-3 structural pass** (every candidate `stage08_pass = true` on all structural gates), for **9/9** in aggregate.
+* **Minimal-edit structural anchoring.** Passing candidates carried only **2–6 substitutions** (≥99.3% identity to their seed), preserved backbone topology (RMSD **0.19–1.81 Å**), and folded within ~1–3 pLDDT of their own wild-type. The standout, QIA28516.1, retargets with **2 mutations** at RMSD **0.19 Å** and mutation-site confidence 1.0 (mutation-site pLDDT ≈96).
+
+![Seed-to-target embedding distance vs best predicted target probability.](results/stage11_sweep/figures/distance_vs_targetprob.png)
+
+*Seed-to-target embedding distance vs best top-3 target probability. The apparent positive trend is **suggestive only** — with three qualified points spanning a narrow distance band (0.010–0.028) and a non-monotonic pattern, it is underpowered and should not be read as an established relationship.*
+
+Run-to-run variation across the earlier search experiments was driven by the **mutation budget** and **search breadth** (rounds, beam width, proposals), together with the pLDDT-scale correction — not by composite re-weighting (see *Current limitations*).
 
 ---
 
@@ -368,12 +382,11 @@ Where candidates struggle, it indicates that the wild-type chassis is highly bri
 By Stage 11 the project still does **not** claim:
 
 * wet-lab validation (phage synthesis and plaque assays)
-* arbitrary-seed universal retargeting (de novo backbone generation)
-* general validity beyond the demonstrated case — results to date cover a single seed and a single Klebsiella → Enterobacter target pair, in silico only
+* general validity beyond the demonstrated ESKAPEE subset — results to date cover an *in silico* validation sweep across diverse *Acinetobacter*, *Klebsiella*, and *Staphylococcus* seeds targeting *Enterobacter*, but ultimate viability requires wet-lab synthesis and plaque assays.
 
 Two characterized limitations are worth stating explicitly:
 
-* **Target-host probability ceiling.** Conservative, fold-preserving edits move the host classifier only slightly: predicted target-host probability stays around ~0.22 regardless of mutation budget. This is a seed-distance limitation — the wild-type seed sits far from the target-host cluster in embedding space — and is resolvable only by choosing a phylogenetically closer seed or by empirical wet-lab screening, not by further search tuning.
+* **Target-host probability ceiling.** Conservative, fold-preserving edits move the host classifier only slightly: across the qualified seeds the best predicted target-host probability stayed modest (0.10–0.22). This is a seed-distance limitation — the wild-type seeds sit far from the target-host cluster in embedding space — resolvable only by choosing a phylogenetically closer seed or by empirical wet-lab screening, not by further search tuning. The sweep could not characterise this relationship cleanly: the seeds that were more distant from the target also failed to fold and were gate-rejected, so distance and foldability are confounded and only three qualified points remain.
 * **Composite weighting.** In the original implementation the composite weights were effectively fixed, so the weight changes attempted across early search runs did not influence results; the observed run-to-run variation came from mutation budget and the structural-validation correction. The weights are now exposed as tunable CLI parameters (defaulting to the canonical values), so future ablations apply as intended.
 
 Instead, the project now supports its sharpest claim:
@@ -394,4 +407,4 @@ By Stage 11, PhageForge tells a complete, closed-loop computational research sto
 * Stage 08 falsified the assumption that ranking success equals structural plausibility
 * Stage 09 attempted to fix this with sequence proxies, but proved proxies are physically insufficient
 * Stage 10 successfully inverted the generative paradigm, proving that explicit 3D structure-conditioned generation is required to safely engineer highly complex biological machinery
-* **Stage 11 achieved self-contained architectural success by instituting a strict Baseline Qualification gate, producing a top-3 panel that passed full structural validation (mean pLDDT ≈ 79, RMSD < 1.6 Å) once the inverse-folding engine was isolated from upstream hallucinations and fed only verified, structurally sound foundations.**
+* **Stage 11 achieved self-contained architectural success by instituting a strict Baseline Qualification gate: across a seven-seed sweep the gate rejected four chassis (including curated wild-types that fold at ~22 pLDDT) and admitted three, all of which produced top-3 panels passing full structural validation (9/9; RMSD 0.19–1.28 Å) — confirming that inverse folding preserves the fold once it is isolated from upstream hallucinations and fed only verified, natively foldable seeds.**

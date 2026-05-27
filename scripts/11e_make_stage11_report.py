@@ -38,26 +38,17 @@ from phageforge.stage11_utils import (
 
 def parse_args() -> argparse.Namespace:
     """Parse CLI arguments for the Stage 11 reporter."""
-    ap = argparse.ArgumentParser(description="Build the final Stage 11 comparative report.")                                   # Create argument parser.
-    ap.add_argument("--stage11_context_json", type=str, required=True,                                                         # Add context file argument.
-                    help="stage11_context.json produced by 11a.")                                                               # Explain context input.
-    ap.add_argument("--search_csv", type=str, required=True,                                                                    # Add search CSV argument.
-                    help="Full Stage 11 search CSV produced by 11b.")                                                           # Explain search input.
-    ap.add_argument("--prefilter_csv", type=str, required=True,                                                                 # Add prefilter CSV argument.
-                    help="Top-K prefilter CSV produced by 11c.")                                                                # Explain prefilter input.
-    ap.add_argument("--validation_csv", type=str, default=None,                                                                 # Add validation CSV argument.
-                    help="Stage 11 structural validation summary CSV produced by 11d (08a output).")                            # Explain validation input.
-    ap.add_argument("--baseline_stage08_csv", type=str, default=None,                                                           # Add S08 baseline argument.
-                    help="Historical Stage 08 structural validation summary CSV (for comparison).")                             # Explain S08 input.
-    ap.add_argument("--baseline_stage09_csv", type=str, default=None,                                                           # Add S09 baseline argument.
-                    help="Historical Stage 09 structural validation summary CSV (for comparison).")                             # Explain S09 input.
-    ap.add_argument("--baseline_stage10_csv", type=str, default=None,                                                           # Add S10 baseline argument.
-                    help="Historical Stage 10 structural validation summary CSV (for comparison).")                             # Explain S10 input.
-    ap.add_argument("--baseline_qualification_json", type=str, default=None,                                                    # Add qualification JSON argument.
-                    help="Optional baseline_qualification.json (auto-resolved next to the context if omitted).")                  # Explain qualification input.
-    ap.add_argument("--out_dir", type=str, required=True,                                                                       # Add output directory argument.
-                    help="Directory where the Stage 11 report artifacts will be written.")                                      # Explain output dir.
-    return ap.parse_args()                                                                                                      # Parse and return arguments.
+    ap = argparse.ArgumentParser(description="Build the final Stage 11 comparative report.")                                                                                # Create argument parser.
+    ap.add_argument("--stage11_context_json", type=str, required=True, help="stage11_context.json produced by 11a.")                                                        # Add context file argument. Explain context input.
+    ap.add_argument("--search_csv", type=str, required=True, help="Full Stage 11 search CSV produced by 11b.")                                                              # Add search CSV argument. Explain search input.
+    ap.add_argument("--prefilter_csv", type=str, required=True, help="Top-K prefilter CSV produced by 11c.")                                                                # Add prefilter CSV argument. Explain prefilter input.
+    ap.add_argument("--validation_csv", type=str, default=None, help="Stage 11 structural validation summary CSV produced by 11d (08a output).")                            # Add validation CSV argument. Explain validation input.
+    ap.add_argument("--baseline_stage08_csv", type=str, default=None, help="Historical Stage 08 structural validation summary CSV (for comparison).")                       # Add S08 baseline argument. Explain S08 input.
+    ap.add_argument("--baseline_stage09_csv", type=str, default=None, help="Historical Stage 09 structural validation summary CSV (for comparison).")                       # Add S09 baseline argument. Explain S09 input.
+    ap.add_argument("--baseline_stage10_csv", type=str, default=None, help="Historical Stage 10 structural validation summary CSV (for comparison).")                       # Add S10 baseline argument. Explain S10 input.
+    ap.add_argument("--baseline_qualification_json", type=str, default=None, help="Optional baseline_qualification.json (auto-resolved next to the context if omitted).")   # Add qualification JSON argument. Explain qualification input.
+    ap.add_argument("--out_dir", type=str, required=True, help="Directory where the Stage 11 report artifacts will be written.")                                            # Add output directory argument. Explain output dir.
+    return ap.parse_args()                                                                                                                                                  # Parse and return arguments.
 
 
 def _safe_read_csv(path: str | Path | None) -> pd.DataFrame:
@@ -65,7 +56,7 @@ def _safe_read_csv(path: str | Path | None) -> pd.DataFrame:
 
     Example:
         df = _safe_read_csv("results.csv")
-        # Returns loaded DataFrame, or an empty DataFrame if the path is invalid.
+        Returns loaded DataFrame, or an empty DataFrame if the path is invalid.
     """
     if not path:                                                                                                                # Check if path is None or empty.
         return pd.DataFrame()                                                                                                   # Return empty frame if no path.
@@ -85,7 +76,7 @@ def summarize_validation(df: pd.DataFrame) -> dict:
 
     Example:
         metrics = summarize_validation(df)
-        # Returns: {'rows': 10, 'pass_count': 5, 'best_mean_plddt': 85.0, ...}
+        Returns: {'rows': 10, 'pass_count': 5, 'best_mean_plddt': 85.0, ...}
     """
     if df.empty:                                                                                                                # Handle empty input data.
         return {                                                                                                                # Initialize empty result structure.
@@ -288,7 +279,7 @@ def _stage11_verdict(stage11_validation: dict) -> dict:
 
     Example:
         outcome = _stage11_verdict({'pass_count': 1, 'rows': 10})
-        # Returns: {'category': 'scientifically_validated', ...}
+        Returns: {'category': 'scientifically_validated', ...}
     """
     rows = int(stage11_validation.get("rows", 0))                                                                               # Get validated count.
     pass_count = int(stage11_validation.get("pass_count", 0))                                                                   # Get pass count.

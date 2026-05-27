@@ -1,0 +1,17 @@
+{
+  "passed": false,
+  "reason": "Seed mean pLDDT=22.296 is below the Baseline Qualification threshold (70.000). Pick a different seed and rerun.",
+  "min_plddt_threshold": 70.0,
+  "seed_mean_plddt": 22.296352583586625,
+  "seed_per_residue_plddt_summary": {
+    "min": 17.0,
+    "p10": 18.0,
+    "median": 21.0,
+    "max": 44.0
+  },
+  "n_residues": 658,
+  "device_used": "cuda",
+  "elapsed_seconds": 80.4268708229065,
+  "seed_pdb_path": "/home/sagemaker-user/phageforge_clean/results/stage11_sweep/seed06_WWD139151/context/seed_wt.pdb",
+  "seed_protein_id": "WWD13915.1"
+}

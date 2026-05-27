@@ -1,0 +1,7 @@
+{
+  "wild_type_plddt": 81.05707196029776,
+  "wild_type_pass": true,
+  "shuffled_plddt": 20.34987593052109,
+  "shuffled_pass": false,
+  "threshold": 70.0
+}

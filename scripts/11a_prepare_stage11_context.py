@@ -64,80 +64,45 @@ def parse_args() -> argparse.Namespace:
     """Parse CLI arguments for the Stage 11 context builder."""
     ap = argparse.ArgumentParser(description="Build the Stage 11 self-contained redesign context (gate stage).")        # CLI description.
     # ----- Required inputs -----
-    ap.add_argument("--strict_csv", type=str, required=True,                                                            # Strict RBP CSV path.
-                    help="Path to data/processed/rbp_dataset_eskapee_strict.csv.")
-    ap.add_argument("--seed_protein_id", type=str, required=True,                                                       # Required: which strict row to use as the chassis.
-                    help="protein_id of the strict RBP to use as the Stage 11 seed (no auto-pick).")
-    ap.add_argument("--source_host", type=str, required=True,                                                           # Required: the seed's native host (validated against the CSV).
-                    help="Native host genus of the seed (validated against the strict CSV).")
-    ap.add_argument("--target_host", type=str, required=True,                                                           # Required: the host we are flipping toward.
-                    help="Host genus the redesign is aiming at (must differ from --source_host).")
-    ap.add_argument("--out_dir", type=str, required=True,                                                               # Required: where the run tree lives.
-                    help="Root directory for the Stage 11 run (e.g. results/stage11/<run>/).")
+    ap.add_argument("--strict_csv", type=str, required=True, help="Path to data/processed/rbp_dataset_eskapee_strict.csv.") # Strict RBP CSV path.
+    ap.add_argument("--seed_protein_id", type=str, required=True, help="protein_id of the strict RBP to use as the Stage 11 seed (no auto-pick).") # Required: which strict row to use as the chassis.
+    ap.add_argument("--source_host", type=str, required=True, help="Native host genus of the seed (validated against the strict CSV).") # Required: the seed's native host (validated against the CSV).
+    ap.add_argument("--target_host", type=str, required=True, help="Host genus the redesign is aiming at (must differ from --source_host).") # Required: the host we are flipping toward.
+    ap.add_argument("--out_dir", type=str, required=True, help="Root directory for the Stage 11 run (e.g. results/stage11/<run>/).") # Required: where the run tree lives.
     # ----- Cached embeddings (toggleable) -----
-    ap.add_argument("--strict_embeddings", type=str,                                                                    # Optional: cached embeddings path.
-                    default="data/processed/strict/esm2_embeddings.pt",
-                    help="Cached ESM-2 strict embeddings (.pt). Used only when --reuse_cached_embeddings is set.")
-    ap.add_argument("--strict_embeddings_index", type=str,                                                              # Optional: index CSV for the cached embeddings.
-                    default="data/processed/strict/esm2_embeddings_index.csv",
-                    help="Index CSV (row_id → protein_id) for the cached strict embeddings.")
-    ap.add_argument("--reuse_cached_embeddings", action="store_true",                                                   # Opt-in flag for the ~5-minute speedup.
-                    help="Reuse the cached ESM-2 strict embeddings instead of recomputing them inside Stage 11.")
+    ap.add_argument("--strict_embeddings", type=str, default="data/processed/strict/esm2_embeddings.pt", help="Cached ESM-2 strict embeddings (.pt). Used only when --reuse_cached_embeddings is set.") # Optional: cached embeddings path.
+    ap.add_argument("--strict_embeddings_index", type=str, default="data/processed/strict/esm2_embeddings_index.csv", help="Index CSV (row_id → protein_id) for the cached strict embeddings.") # Optional: index CSV for the cached embeddings.
+    ap.add_argument("--reuse_cached_embeddings", action="store_true", help="Reuse the cached ESM-2 strict embeddings instead of recomputing them inside Stage 11.") # Opt-in flag for the ~5-minute speedup.
     # ----- Trained host probe (treated as foundational input) -----
-    ap.add_argument("--predictor_model", type=str,                                                                      # Trained logistic regression .joblib.
-                    default="results/broad/linear_probe/seed_42/model.joblib",
-                    help="Trained host-prediction probe used by Stage 11b (recorded in provenance).")
-    ap.add_argument("--predictor_label_classes", type=str,                                                              # Label classes JSON.
-                    default="results/broad/linear_probe/seed_42/label_classes.json",
-                    help="Label classes JSON for the trained host probe.")
+    ap.add_argument("--predictor_model", type=str, default="results/broad/linear_probe/seed_42/model.joblib", help="Trained host-prediction probe used by Stage 11b (recorded in provenance).") # Trained logistic regression .joblib.
+    ap.add_argument("--predictor_label_classes", type=str, default="results/broad/linear_probe/seed_42/label_classes.json", help="Label classes JSON for the trained host probe.") # Label classes JSON.
     # ----- Embedding model -----
-    ap.add_argument("--embedding_model", type=str,                                                                      # ESM-2 model id.
-                    default="facebook/esm2_t33_650M_UR50D",
-                    help="HuggingFace model id of the ESM-2 backbone (must match the probe's training backbone).")
+    ap.add_argument("--embedding_model", type=str, default="facebook/esm2_t33_650M_UR50D", help="HuggingFace model id of the ESM-2 backbone (must match the probe's training backbone).") # ESM-2 model id.
     # ----- ESMFold knobs -----
-    ap.add_argument("--esmfold_device", type=str, default="auto",                                                       # cuda / cpu / auto.
-                    help="Device for ESMFold (auto = cuda if available, else cpu).")
-    ap.add_argument("--esmfold_chunk_size", type=int, default=128,                                                      # VRAM-vs-throughput knob.
-                    help="ESMFold chunk size (reduce on OOM).")
-    ap.add_argument("--esmfold_num_recycles", type=int, default=1,                                                      # Recycle depth.
-                    help="ESMFold recycle iterations (1 is the Stage 08 default).")
+    ap.add_argument("--esmfold_device", type=str, default="auto", help="Device for ESMFold (auto = cuda if available, else cpu).") # cuda / cpu / auto.
+    ap.add_argument("--esmfold_chunk_size", type=int, default=128, help="ESMFold chunk size (reduce on OOM).") # VRAM-vs-throughput knob.
+    ap.add_argument("--esmfold_num_recycles", type=int, default=1, help="ESMFold recycle iterations (1 is the Stage 08 default).") # Recycle depth.
     # ----- Baseline Qualification gate -----
-    ap.add_argument("--min_seed_plddt", type=float, default=70.0,                                                       # The single most important guard.
-                    help="Baseline Qualification threshold; seeds folding below this abort the run with exit 2.")
+    ap.add_argument("--min_seed_plddt", type=float, default=70.0, help="Baseline Qualification threshold; seeds folding below this abort the run with exit 2.") # The single most important guard.
     # ----- Family / target context -----
-    ap.add_argument("--family_top_n", type=int, default=32,                                                             # Family pool size.
-                    help="Number of family members to keep (top-N by ESM-2 cosine to the seed).")
-    ap.add_argument("--target_top_m", type=int, default=8,                                                              # Target pool size.
-                    help="Number of target-host members to keep (top-M by ESM-2 cosine to the seed).")
-    ap.add_argument("--family_cosine_floor", type=float, default=0.85,                                                  # Cosine quality gate.
-                    help="Minimum cosine to seed for a row to qualify as a family member.")
-    ap.add_argument("--length_tolerance", type=float, default=0.05,                                                     # Relative length gate.
-                    help="Maximum relative length difference (|len_other-len_seed|/len_seed) for family/target inclusion.")
+    ap.add_argument("--family_top_n", type=int, default=32, help="Number of family members to keep (top-N by ESM-2 cosine to the seed).") # Family pool size.
+    ap.add_argument("--target_top_m", type=int, default=8, help="Number of target-host members to keep (top-M by ESM-2 cosine to the seed).") # Target pool size.
+    ap.add_argument("--family_cosine_floor", type=float, default=0.85, help="Minimum cosine to seed for a row to qualify as a family member.") # Cosine quality gate.
+    ap.add_argument("--length_tolerance", type=float, default=0.05, help="Maximum relative length difference (|len_other-len_seed|/len_seed) for family/target inclusion.") # Relative length gate.
     # ----- Edit-space construction -----
-    ap.add_argument("--max_edit_positions", type=int, default=6,                                                        # Hard cap.
-                    help="Maximum number of hard editable positions.")
-    ap.add_argument("--soft_positions", type=int, default=3,                                                            # Soft buffer.
-                    help="Number of soft (lower-priority) editable positions.")
-    ap.add_argument("--min_mutations", type=int, default=1,                                                             # Lower mutation budget.
-                    help="Minimum number of mutations per Stage 11 candidate.")
-    ap.add_argument("--max_mutations", type=int, default=4,                                                             # Upper mutation budget.
-                    help="Maximum number of mutations per Stage 11 candidate.")
-    ap.add_argument("--entropy_floor", type=float, default=0.20,                                                        # Conservation gate.
-                    help="Per-position entropy floor for inclusion in the edit space.")
-    ap.add_argument("--family_top_k", type=int, default=4,                                                              # Per-position AA preference depth (family).
-                    help="Top-K family-side AAs to consider per position when building the allowed-AA list.")
-    ap.add_argument("--target_top_k", type=int, default=4,                                                              # Per-position AA preference depth (target).
-                    help="Top-K target-side AAs to consider per position when building the allowed-AA list.")
-    ap.add_argument("--max_allowed_aas_per_pos", type=int, default=6,                                                   # Branching cap.
-                    help="Max distinct AAs allowed per position (after combining family and target preferences).")
-    ap.add_argument("--region_block", type=int, default=50,                                                             # Region bucket size.
-                    help="Region bucket size in residues for spreading hard positions.")
+    ap.add_argument("--max_edit_positions", type=int, default=6, help="Maximum number of hard editable positions.") # Hard cap.
+    ap.add_argument("--soft_positions", type=int, default=3, help="Number of soft (lower-priority) editable positions.") # Soft buffer.
+    ap.add_argument("--min_mutations", type=int, default=1, help="Minimum number of mutations per Stage 11 candidate.") # Lower mutation budget.
+    ap.add_argument("--max_mutations", type=int, default=4, help="Maximum number of mutations per Stage 11 candidate.") # Upper mutation budget.
+    ap.add_argument("--entropy_floor", type=float, default=0.20, help="Per-position entropy floor for inclusion in the edit space.") # Conservation gate.
+    ap.add_argument("--family_top_k", type=int, default=4, help="Top-K family-side AAs to consider per position when building the allowed-AA list.") # Per-position AA preference depth (family).
+    ap.add_argument("--target_top_k", type=int, default=4, help="Top-K target-side AAs to consider per position when building the allowed-AA list.") # Per-position AA preference depth (target).
+    ap.add_argument("--max_allowed_aas_per_pos", type=int, default=6, help="Max distinct AAs allowed per position (after combining family and target preferences).") # Branching cap.
+    ap.add_argument("--region_block", type=int, default=50, help="Region bucket size in residues for spreading hard positions.") # Region bucket size.
     # ----- Misc -----
-    ap.add_argument("--seed", type=int, default=42,                                                                     # Deterministic seed.
-                    help="Random seed used for deterministic tie-breaking when selecting positions.")
-    ap.add_argument("--run_name", type=str, default=None,                                                                # Optional override.
-                    help="Override the auto-generated run name; default is <source>_to_<target>_<seedid>_seed<N>_<UTC>.")
-    return ap.parse_args()                                                                                              # Parse and return.
+    ap.add_argument("--seed", type=int, default=42, help="Random seed used for deterministic tie-breaking when selecting positions.") # Deterministic seed.
+    ap.add_argument("--run_name", type=str, default=None, help="Override the auto-generated run name; default is <source>_to_<target>_<seedid>_seed<N>_<UTC>.") # Optional override.
+    return ap.parse_args()                                                                                    # Parse and return.
 
 
 def main() -> None:                                                                                                     # Main orchestration entry point.
@@ -157,7 +122,7 @@ def main() -> None:                                                             
         print(f"[ERROR] --source_host and --target_host must differ (got '{args.source_host}').", file=sys.stderr)      # Loud error.
         sys.exit(EXIT_INPUT_ERROR)                                                                                      # Exit 1.
 
-    # ----- Load and validate the strict CSV; pick the seed row -----
+    # ----- Load and validate the strict CSV; pick the seed row and extract the sequence -----
     try:                                                                                                                # Wrap CSV / seed selection in a try/except so we exit cleanly on bad input.
         strict_df = load_strict_dataset(args.strict_csv)                                                                # Load & validate the strict CSV.
         seed_row = select_seed_row(strict_df, args.seed_protein_id, args.source_host)                                   # Pick the seed row and validate host.
@@ -283,9 +248,10 @@ def main() -> None:                                                             
     # ----- Build the edit space from family + target alignment columns -----
     family_aligned = family_df["aa_sequence"].astype(str).tolist()                                                      # Length-truncate happens inside the helper.
     target_aligned = target_df["aa_sequence"].astype(str).tolist()                                                      # Same handling for target sequences.
-    print(f"[INFO] Building edit space (entropy_floor={args.entropy_floor}, "                                            # Heads-up.
+    print(f"[INFO] Building edit space (entropy_floor={args.entropy_floor}, "                                           # Heads-up.
           f"family_top_k={args.family_top_k}, target_top_k={args.target_top_k}, "
           f"max_allowed={args.max_allowed_aas_per_pos})…", flush=True)
+    
     proposals = build_stage11_edit_proposals(                                                                           # The from-scratch edit-space builder.
         seed_sequence=seed_sequence,
         family_aligned_seqs=family_aligned,

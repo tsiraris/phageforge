@@ -1,0 +1,17 @@
+{
+  "passed": true,
+  "reason": "Seed mean pLDDT=88.150 passes threshold 70.000.",
+  "min_plddt_threshold": 70.0,
+  "seed_mean_plddt": 88.14968814968815,
+  "seed_per_residue_plddt_summary": {
+    "min": 53.0,
+    "p10": 73.0,
+    "median": 92.0,
+    "max": 98.0
+  },
+  "n_residues": 481,
+  "device_used": "cuda",
+  "elapsed_seconds": 33.927934408187866,
+  "seed_pdb_path": "/home/sagemaker-user/phageforge_clean/results/stage11_sweep/seed03_QIA285161/context/seed_wt.pdb",
+  "seed_protein_id": "QIA28516.1"
+}

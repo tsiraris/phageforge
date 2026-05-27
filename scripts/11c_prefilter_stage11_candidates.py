@@ -45,6 +45,7 @@ def parse_args() -> argparse.Namespace:
     ap.add_argument("--top_k", type=int, default=10, help="Number of candidates in the extended prefilter panel.")                                  # Define the configurable integer setting the extended panel target capacity
     ap.add_argument("--top_k_final", type=int, default=3, help="Number of candidates in the compact validation panel.")                             # Define the configurable integer setting the elite panel target capacity
     ap.add_argument("--embedding_model", type=str, default="facebook/esm2_t33_650M_UR50D", help="Embedding backbone used for diversity reranking.") # Define the specific HuggingFace transformer model ID used for vector embedding
+    ap.add_argument("--diversity_penalty_weight", type=float, default=0.20, help="Weighting for the diversity penalty term used inside the diversity reranking.")                          # Define the configurable weight for the diversity penalty term
     ap.add_argument("--batch_size", type=int, default=4, help="Batch size for candidate embedding.")                                                # Define the batch size limit to protect hardware from VRAM exhaustion
     ap.add_argument("--seed", type=int, default=42, help="Random seed for deterministic ordering.")                                                 # Define the random seed to ensure exact reproducibility across multiple runs
     return ap.parse_args()                                                                                                                          # Parse the supplied arguments from the terminal and return the namespace
@@ -53,7 +54,7 @@ def parse_args() -> argparse.Namespace:
 def main() -> None:
     args = parse_args()                                                                                                                             # Call the parser to map terminal inputs to accessible Python variables
     seed_everything(args.seed)                                                                                                                      # Force all pseudo-random number generators to follow a deterministic sequence
-
+    # Load the Stage 11 contextual blueprint, the search log, and the mutation budget
     context_path = Path(args.stage11_context_json)                                                                                                  # Cast the context JSON filepath string into a robust Path object
     search_path = Path(args.search_csv)                                                                                                             # Cast the search CSV filepath string into a robust Path object
     if not context_path.exists():                                                                                                                   # Dynamically evaluate if the required context configuration file actually exists
@@ -73,7 +74,8 @@ def main() -> None:
     editable_region = dict(context.get("editable_region", {}))                                                                                      # Extract the mutational constraints dictionary from the master context blueprint
     min_mut = int(editable_region.get("min_mutations", 1))                                                                                          # Safely extract the absolute minimum required substitutions per candidate
     max_mut = int(editable_region.get("max_mutations", 4))                                                                                          # Safely extract the absolute maximum allowable substitutions per candidate
-
+    
+    # Apply the mutation budget filter to the search log, and verify that at least one candidate remains
     keep = search_df.copy()                                                                                                                         # Create an explicit memory copy of the dataframe to prevent SettingWithCopy warnings
     if "mutation_count" in keep.columns:                                                                                                            # Verify the existence of the mutation count telemetry column before filtering
         before = len(keep)                                                                                                                          # Record the total candidate volume prior to applying the budget constraints
@@ -83,6 +85,7 @@ def main() -> None:
         print("[ERROR] Stage 11 prefilter retained zero candidates after the mutation-budget filter.", file=sys.stderr)                             # Emit a fatal error explaining that no candidates survived the strict budget rules
         sys.exit(EXIT_INPUT_ERROR)                                                                                                                  # Terminate the application immediately with a standardized input error code
 
+    # Sort surviving candidates by the composite score, apply deduplication to the search log, and verify that at least one candidate remains
     sort_cols = [c for c in ["stage10_composite_score", "stage11_composite_score", "target_probability", "if1_log_likelihood"] if c in keep.columns]# Assemble an ordered list of available optimization metrics prioritizing the composite score
     if not sort_cols:                                                                                                                               # Check if the dataframe is completely devoid of recognized mathematical ranking columns
         print("[ERROR] Search CSV has no composite/target/IF1 score columns — cannot rank.", file=sys.stderr)                                       # Emit a fatal error indicating structural sorting is mathematically impossible
@@ -94,6 +97,7 @@ def main() -> None:
     if len(keep) < int(args.top_k_final):                                                                                                           # Assess if the surviving pool is smaller than the mandated Oracle submission limit
         print(f"[WARN] Only {len(keep)} unique candidates available, less than --top_k_final={int(args.top_k_final)}. Continuing.", flush=True)     # Emit a non-fatal operational warning informing the user of the reduced panel size
 
+    # Embed the remaining candidates into a high-dimensional vector space
     score_col = sort_cols[0]                                                                                                                        # Isolate the highest priority optimization metric available in the active dataframe
     print(f"[INFO] Embedding {len(keep)} sequences with '{args.embedding_model}' for first-pass diversity rerank…", flush=True)                     # Announce the initiation of the computationally intensive spatial embedding projection
     try:                                                                                                                                            # Wrap the heavy tensor operations in a protective error handling block
@@ -102,9 +106,11 @@ def main() -> None:
         print(f"[ERROR] First-pass embedding failed: {exc}", file=sys.stderr)                                                                       # Surface the specific transformer exception directly to the standard error channel
         sys.exit(EXIT_INFERENCE_ERROR)                                                                                                              # Terminate the application utilizing the specific inference failure exit code
 
-    topk_idx = greedy_diverse_subset(embeddings, keep[score_col].to_numpy(dtype=np.float32), top_k=int(args.top_k))                                 # Assess Euclidean penalties discarding parallel evolutionary paths to prevent mode collapse
+    # Select the top-k candidates that are diverse enough from each other
+    topk_idx = greedy_diverse_subset(embeddings, keep[score_col].to_numpy(dtype=np.float32), top_k=int(args.top_k), diversity_penalty_weight=0.20)                                 # Assess Euclidean penalties discarding parallel evolutionary paths to prevent mode collapse
     topk_df = keep.iloc[topk_idx].sort_values(sort_cols, ascending=False).reset_index(drop=True)                                                    # Siphon selected indices rendering the extended highly distinct secondary tracking list
 
+    # Re-embeds the Top-k panel in isolation
     print(f"[INFO] Re-embedding the top-{len(topk_df)} panel for second-pass diversity rerank…", flush=True)                                        # Announce the initiation of the extreme-precision secondary geometric differentiation
     try:                                                                                                                                            # Wrap the secondary heavy tensor operations in a protective error handling block
         topk_embeddings = embed_sequences(topk_df["candidate_sequence"].astype(str).tolist(), model_name=args.embedding_model, batch_size=args.batch_size) # Re-project strictly the top-K panel to calibrate cosine variance exactly to the subset
@@ -112,14 +118,17 @@ def main() -> None:
         print(f"[ERROR] Second-pass embedding failed: {exc}", file=sys.stderr)                                                                      # Surface the specific transformer exception directly to the standard error channel
         sys.exit(EXIT_INFERENCE_ERROR)                                                                                                              # Terminate the application utilizing the specific inference failure exit code
 
-    final_idx = greedy_diverse_subset(topk_embeddings, topk_df[score_col].to_numpy(dtype=np.float32), top_k=int(args.top_k_final))                  # Run exact secondary geometric differentiation extracting the absolute pinnacle panel
+    # Runs the greedy_diverse_subset a second time to select the absolute elite panel (default: Top 3).
+    final_idx = greedy_diverse_subset(topk_embeddings, topk_df[score_col].to_numpy(dtype=np.float32), top_k=int(args.top_k_final), diversity_penalty_weight=0.20)                  # Run exact secondary geometric differentiation extracting the absolute pinnacle panel
     final_df = topk_df.iloc[final_idx].sort_values(sort_cols, ascending=False).reset_index(drop=True)                                               # Score-sort the final maximum optimization panel ready for pure Oracle submission
 
+    # Injects a 1-indexed sample_id column into the finalized Top 10 and Top 3 DataFrames, for compatibility with the unmodified Stage 08a structural validator.
     topk_df = topk_df.copy()                                                                                                                        # Instatiate explicit memory copy of the extended panel to prevent pandas slice warnings
     final_df = final_df.copy()                                                                                                                      # Instatiate explicit memory copy of the elite panel to prevent pandas slice warnings
     topk_df["sample_id"] = np.arange(1, len(topk_df) + 1)                                                                                           # Inject clean 1-indexed integers ensuring seamless legacy validation execution downstream
     final_df["sample_id"] = np.arange(1, len(final_df) + 1)                                                                                         # Inject identical logic specifically addressing the 3D Oracle submission panel
-
+    
+    # Write both the extended (1st diversity) and elite (2nd diversity) panels to compatible CSV files
     out_topk = Path(args.out_topk_csv)                                                                                                              # Resolve the target output path for the extended diversity candidate list
     out_final = Path(args.out_topk_final_csv)                                                                                                       # Resolve the target output path for the elite Oracle candidate list
     out_topk.parent.mkdir(parents=True, exist_ok=True)                                                                                              # Explicitly instantiate local directory hierarchies guaranteeing file write capabilities
@@ -129,6 +138,7 @@ def main() -> None:
     print(f"[OK] Wrote: {out_topk}", flush=True)                                                                                                    # Send basic user operational notification confirming extended CSV completion
     print(f"[OK] Wrote: {out_final}", flush=True)                                                                                                   # Send basic user operational notification confirming elite CSV completion
 
+    # Generate a summary of the selected panels and write it to a JSON file
     summary = {                                                                                                                                     # Generate summary logic array packaging vital statistical metadata parameters
         "stage": "11c",                                                                                                                             # Anchor identity tagging the universal execution phase identifier explicitly
         "input_search_csv": str(search_path.resolve()),                                                                                             # Lock the absolute physical pathway resolving the raw generation history origin

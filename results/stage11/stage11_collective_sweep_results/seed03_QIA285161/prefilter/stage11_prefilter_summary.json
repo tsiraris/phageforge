@@ -1,0 +1,19 @@
+{
+  "stage": "11c",
+  "input_search_csv": "/home/sagemaker-user/phageforge_clean/results/stage11_sweep/seed03_QIA285161/search/stage11_search_candidates.csv",
+  "stage11_context_json": "/home/sagemaker-user/phageforge_clean/results/stage11_sweep/seed03_QIA285161/context/stage11_context.json",
+  "top_k_rows": 10,
+  "final_rows": 3,
+  "score_column_used": "stage10_composite_score",
+  "diversity_penalty_weight": 0.2,
+  "best_stage10_score": 0.6799252,
+  "best_target_probability": 0.16735518,
+  "best_if1_log_likelihood": -1.5434058,
+  "final_sample_ids": [
+    1,
+    2,
+    3
+  ],
+  "out_topk_csv": "/home/sagemaker-user/phageforge_clean/results/stage11_sweep/seed03_QIA285161/prefilter/stage11_top10.csv",
+  "out_topk_final_csv": "/home/sagemaker-user/phageforge_clean/results/stage11_sweep/seed03_QIA285161/prefilter/stage11_top3.csv"
+}

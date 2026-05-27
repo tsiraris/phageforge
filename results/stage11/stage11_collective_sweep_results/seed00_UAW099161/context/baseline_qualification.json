@@ -1,0 +1,17 @@
+{
+  "passed": true,
+  "reason": "Seed mean pLDDT=74.029 passes threshold 70.000.",
+  "min_plddt_threshold": 70.0,
+  "seed_mean_plddt": 74.02853745541023,
+  "seed_per_residue_plddt_summary": {
+    "min": 24.0,
+    "p10": 48.0,
+    "median": 78.0,
+    "max": 97.0
+  },
+  "n_residues": 841,
+  "device_used": "cuda",
+  "elapsed_seconds": 152.78217315673828,
+  "seed_pdb_path": "/home/sagemaker-user/phageforge_clean/results/stage11_sweep/seed00_UAW099161/context/seed_wt.pdb",
+  "seed_protein_id": "UAW09916.1"
+}

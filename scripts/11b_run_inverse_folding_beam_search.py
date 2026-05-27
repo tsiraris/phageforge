@@ -39,7 +39,7 @@ except Exception:                                                               
             size = list(src.size())                                                                                       # Copy source shape.
             size[dim] = dim_size if dim_size is not None else (int(index.max()) + 1 if index.numel() else 0)              # Resolve scatter-dim length.
             out = _torch.zeros(size, dtype=src.dtype, device=src.device)                                                  # Allocate zeros on the same device/dtype.
-        return out.scatter_add_(dim, index, src)                                                                          # Delegate to PyTorch's native in-place scatter-add.
+        return out.scatter_add_(dim, index.to(src.device), src)                                                                          # Delegate to PyTorch's native in-place scatter-add.
     def _mock_scatter(src, index, dim=-1, out=None, dim_size=None, reduce="sum"):                                         # Replacement for scatter (sum/add only).
         if reduce in ("sum", "add"):                                                                                      # fair-esm only requests additive reduction.
             return _mock_scatter_add(src, index, dim, out, dim_size)                                                      # Reuse the scatter_add path.
@@ -47,7 +47,17 @@ except Exception:                                                               
     _ts = _types.ModuleType("torch_scatter")                                                                              # Synthesize the module object.
     _ts.scatter_add = _mock_scatter_add; _ts.scatter = _mock_scatter                                                      # Expose the API fair-esm uses.
     _sys.modules["torch_scatter"] = _ts                                                                                   # Register the stand-in.
-    _sys.modules.setdefault("torch_sparse", _types.ModuleType("torch_sparse"))                                           # fair-esm only imports the torch_sparse namespace; an empty stub suffices.
+    _sys.modules.setdefault("torch_sparse", _types.ModuleType("torch_sparse"))
+
+try:
+    import torch_geometric.nn as _tg_nn
+    _orig_knn = _tg_nn.knn_graph
+    def _device_aware_knn(*args, **kwargs):
+        return _orig_knn(*args, **kwargs).to(args[0].device)
+    _tg_nn.knn_graph = _device_aware_knn
+except ImportError:
+    pass
+                                           # fair-esm only imports the torch_sparse namespace; an empty stub suffices.
 # ------------------------------------------------------------------------------------------------------------------------
 
 import argparse
@@ -78,55 +88,40 @@ from phageforge.stage11_utils import (
     write_json,
 )
 
-
 def parse_args() -> argparse.Namespace:
     """Parse CLI arguments for the Stage 11 inverse-folding beam search."""
     ap = argparse.ArgumentParser(description="Run Stage 11 structure-conditioned inverse-folding search.")              # CLI description.
+    
     # ----- Required inputs -----
-    ap.add_argument("--stage11_context_json", type=str, required=True,                                                  # Required context path.
-                    help="Path to stage11_context.json produced by 11a.")
-    ap.add_argument("--predictor_model", type=str, required=True,                                                       # Trained host probe.
-                    help="Trained logistic-regression host probe (.joblib).")
-    ap.add_argument("--label_classes_json", type=str, required=True,                                                    # Label classes file.
-                    help="Label classes JSON for the trained host probe.")
-    ap.add_argument("--out_csv", type=str, required=True,                                                               # Output CSV.
-                    help="Where to write the full Stage 11 search table.")
-    ap.add_argument("--out_json", type=str, required=True,                                                              # Output summary JSON.
-                    help="Where to write the compact Stage 11 search summary JSON.")
+    ap.add_argument("--stage11_context_json", type=str, required=True, help="Path to stage11_context.json produced by 11a.") # Required context path.
+    ap.add_argument("--predictor_model", type=str, required=True, help="Trained logistic-regression host probe (.joblib).")  # Trained host probe.
+    ap.add_argument("--label_classes_json", type=str, required=True, help="Label classes JSON for the trained host probe.")  # Label classes file.
+    ap.add_argument("--out_csv", type=str, required=True, help="Where to write the full Stage 11 search table.")             # Output CSV.
+    ap.add_argument("--out_json", type=str, required=True, help="Where to write the compact Stage 11 search summary JSON.")  # Output summary JSON.
+    
     # ----- Embedding + IF1 knobs -----
-    ap.add_argument("--embedding_model", type=str, default="facebook/esm2_t33_650M_UR50D",                              # ESM-2 backbone.
-                    help="Embedding backbone used by the trained predictor and family centroid scoring.")
-    ap.add_argument("--if_device", type=str, default="cuda",                                                            # IF1 device.
-                    help="Device for the ESM-IF1 model.")
-    ap.add_argument("--if_chain_id", type=str, default="A",                                                             # Chain ID inside the PDB.
-                    help="Chain identifier used when loading the seed scaffold.")
+    ap.add_argument("--embedding_model", type=str, default="facebook/esm2_t33_650M_UR50D", help="Embedding backbone used by the trained predictor and family centroid scoring.") # ESM-2 backbone.
+    ap.add_argument("--if_device", type=str, default="cuda", help="Device for the ESM-IF1 model.")                           # IF1 device.
+    ap.add_argument("--if_chain_id", type=str, default="A", help="Chain identifier used when loading the seed scaffold.")    # Chain ID inside the PDB.
+    
     # ----- Search knobs -----
-    ap.add_argument("--rounds", type=int, default=4,                                                                    # Beam depth.
-                    help="Number of sequential redesign rounds.")
-    ap.add_argument("--beam_width", type=int, default=24,                                                               # Survivors per round.
-                    help="Number of candidates retained after each redesign round.")
-    ap.add_argument("--proposals_per_parent", type=int, default=8,                                                      # Branching factor per parent.
-                    help="Maximum number of proposal branches created from each parent.")
-    ap.add_argument("--substitutions_per_position", type=int, default=3,                                                # Per-position breadth.
-                    help="Maximum number of amino-acid substitutions tried at each editable position.")
-    ap.add_argument("--batch_size", type=int, default=4,                                                                # VRAM safety.
-                    help="Batch size for embedding candidates with the predictor backbone.")
+    ap.add_argument("--rounds", type=int, default=4, help="Number of sequential redesign rounds.")                           # Beam depth.
+    ap.add_argument("--beam_width", type=int, default=24, help="Number of candidates retained after each redesign round.")   # Survivors per round.
+    ap.add_argument("--proposals_per_parent", type=int, default=8, help="Maximum number of proposal branches created from each parent.") # Branching factor per parent.
+    ap.add_argument("--substitutions_per_position", type=int, default=3, help="Maximum number of amino-acid substitutions tried at each editable position.") # Per-position breadth.
+    ap.add_argument("--batch_size", type=int, default=4, help="Batch size for embedding candidates with the predictor backbone.") # VRAM safety.
+    
     # ----- Composite scoring weights (locked at Stage 10 defaults for v1) -----
-    ap.add_argument("--w_target", type=float, default=0.30,                                                             # Target-host weight.
-                    help="Composite weight on target_probability (default locked at Stage 10).")
-    ap.add_argument("--w_if1", type=float, default=0.45,                                                                # IF1 weight.
-                    help="Composite weight on if1_log_likelihood (default locked at Stage 10).")
-    ap.add_argument("--w_family", type=float, default=0.15,                                                             # Family cosine weight.
-                    help="Composite weight on family_cosine (default locked at Stage 10).")
-    ap.add_argument("--w_identity", type=float, default=0.10,                                                           # Identity weight.
-                    help="Composite weight on seed_identity (default locked at Stage 10).")
-    ap.add_argument("--w_mut_penalty", type=float, default=0.10,                                                        # Mutation count penalty (subtracted).
-                    help="Composite penalty weight on mutation_count (subtracted; default locked at Stage 10).")
+    ap.add_argument("--w_target", type=float, default=0.30, help="Composite weight on target_probability (default locked at Stage 10).") # Target-host weight.
+    ap.add_argument("--w_if1", type=float, default=0.45, help="Composite weight on if1_log_likelihood (default locked at Stage 10).")    # IF1 weight.
+    ap.add_argument("--w_family", type=float, default=0.15, help="Composite weight on family_cosine (default locked at Stage 10).")      # Family cosine weight.
+    ap.add_argument("--w_identity", type=float, default=0.10, help="Composite weight on seed_identity (default locked at Stage 10).")    # Identity weight.
+    ap.add_argument("--w_mut_penalty", type=float, default=0.10, help="Composite penalty weight on mutation_count (subtracted; default locked at Stage 10).") # Mutation count penalty (subtracted).
+    
     # ----- Misc -----
-    ap.add_argument("--seed", type=int, default=42,                                                                     # Determinism.
-                    help="Random seed used for deterministic search ordering.")
-    return ap.parse_args()                                                                                              # Done.
-
+    ap.add_argument("--seed", type=int, default=42, help="Random seed used for deterministic search ordering.")              # Determinism.
+    
+    return ap.parse_args()                                                                                                   # Done.
 
 def build_round_children(
     parents: list[Stage10Candidate],
@@ -311,7 +306,7 @@ def main() -> None:                                                             
             dedup.setdefault(item.candidate_sequence, item)                                                              # First-wins dedup.
         children = list(dedup.values())                                                                                 # Replace list.
 
-        # Score every unique child via the multi-modal evaluation gauntlet.
+        # Extract the Target prob, IF1 log-likelihood, and family cos scores for every unique child via the multi-modal evaluation gauntlet.
         try:                                                                                                            # Wrap heavy inference.
             score_frame = evaluate_candidate_table(                                                                     # Target prob + IF1 ll + family cos.
                 sequences=[item.candidate_sequence for item in children],
@@ -410,6 +405,7 @@ def main() -> None:                                                             
             cand_emb,
             round_frame["stage10_composite_score"].to_numpy(dtype=np.float32),
             top_k=args.beam_width,
+            diversity_penalty_weight=0.20,
         )
         keep_sequences = set(round_frame.iloc[keep_idx]["candidate_sequence"].astype(str).tolist())                     # Survivors as a fast lookup set.
 

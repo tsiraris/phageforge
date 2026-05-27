@@ -1,0 +1,8 @@
+protein_id,source_host,length,distance_to_target,run_dir,gate,seed_plddt,top3_pass,top3_n,best_cand_plddt,best_rmsd,best_target_prob
+UAW09916.1,Acinetobacter,841,0.009660184383392334,/home/sagemaker-user/phageforge_clean/results/stage11_sweep/seed00_UAW099161,PASS,74.02853745541023,3,3,72.94173602853745,1.2776679727103315,0.09885376
+UOX38086.1,Klebsiella,806,0.017809629440307617,/home/sagemaker-user/phageforge_clean/results/stage11_sweep/seed01_UOX380861,PASS,81.05707196029776,3,3,78.75434243176178,1.271272209961964,0.22011006
+WLY86866.1,Staphylococcus,641,0.01935023069381714,/home/sagemaker-user/phageforge_clean/results/stage11_sweep/seed02_WLY868661,REJECT,69.38221528861155,0,0,,,
+QIA28516.1,Staphylococcus,481,0.027725040912628174,/home/sagemaker-user/phageforge_clean/results/stage11_sweep/seed03_QIA285161,PASS,88.14968814968815,3,3,88.70686070686071,0.1884754515461333,0.17490414
+QFR57578.1,Klebsiella,658,0.04735344648361206,/home/sagemaker-user/phageforge_clean/results/stage11_sweep/seed04_QFR575781,REJECT,23.919452887537993,0,0,,,
+WWD14686.1,Klebsiella,659,0.04895561933517456,/home/sagemaker-user/phageforge_clean/results/stage11_sweep/seed05_WWD146861,REJECT,22.540212443095598,0,0,,,
+WWD13915.1,Klebsiella,658,0.05908477306365967,/home/sagemaker-user/phageforge_clean/results/stage11_sweep/seed06_WWD139151,REJECT,22.296352583586625,0,0,,,

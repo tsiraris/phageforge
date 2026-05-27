@@ -333,7 +333,7 @@ The fix recomputes every confidence metric on the canonical 0–100 per-residue 
 
 The pipeline was closed out with a **multi-seed validation sweep**: seven wild-type RBP seeds spanning three source genera, all retargeting *Enterobacter*, run end-to-end (11a→11d) under identical default weights and a fixed search configuration. The only variable is the seed.
 
-![Wild-type seed (gray) and the ESM-IF1 minimal-edit redesign (blue) superposed for QIA28516.1.](results/stage11_sweep/figures/Hero_image_QIA28516 seed-vs-candidate_2 superposition (the 0.188 Å).png)
+![Wild-type seed (gray) and the ESM-IF1 minimal-edit redesign (blue) superposed for QIA28516.1.](<results/stage11/stage11_collective_sweep_results/figures/Hero_image_QIA28516 seed-vs-candidate_2 superposition (the 0.188 Å).png>)
 
 *Surface superposition of the wild-type seed (gray) and the structurally validated 2-substitution redesign (blue) for the standout seed QIA28516.1. The two surfaces are near-coincident — RMSD 0.19 Å — illustrating that minimal, targeted edits leave the fold essentially unchanged.*
 
@@ -349,7 +349,7 @@ The pipeline was closed out with a **multi-seed validation sweep**: seven wild-t
 | WWD14686.1 | *Klebsiella* | 659 | REJECT | 22.5 | — | — | — | — | — | — |
 | WWD13915.1 | *Klebsiella* | 658 | REJECT | 22.3 | — | — | — | — | — | — |
 
-![Per-seed top-3 structural pass rate (bars) and seed foldability (line).](results/stage11_sweep/figures/sweep_passrate.png)
+![Per-seed top-3 structural pass rate (bars) and seed foldability (line).](<results/stage11/stage11_collective_sweep_results/figures/sweep_passrate.png>)
 
 *Multi-seed sweep. The Baseline Qualification gate rejects collapsed/low-confidence chassis (pLDDT ~22, plus one borderline near-miss at 69.4) and admits only foldable wild-types; every admitted seed then yields a 3/3 top-3 pass.*
 
@@ -357,7 +357,7 @@ The pipeline was closed out with a **multi-seed validation sweep**: seven wild-t
 * **Generalization across qualified seeds: 9/9.** All three baseline-qualified seeds — *Acinetobacter*, *Klebsiella*, *Staphylococcus*, 481–841 aa — reached a **3/3 top-3 structural pass** (every candidate `stage08_pass = true` on all structural gates), for **9/9** in aggregate.
 * **Minimal-edit structural anchoring.** Passing candidates carried only **2–6 substitutions** (≥99.3% identity to their seed), preserved backbone topology (RMSD **0.19–1.81 Å**), and folded within ~1–3 pLDDT of their own wild-type. The standout, QIA28516.1, retargets with **2 mutations** at RMSD **0.19 Å** and mutation-site confidence 1.0 (mutation-site pLDDT ≈96).
 
-![Seed-to-target embedding distance vs best predicted target probability.](results/stage11_sweep/figures/distance_vs_targetprob.png)
+![Seed-to-target embedding distance vs best predicted target probability.](<results/stage11/stage11_collective_sweep_results/figures/distance_vs_targetprob.png>)
 
 *Seed-to-target embedding distance vs best top-3 target probability. The apparent positive trend is **suggestive only** — with three qualified points spanning a narrow distance band (0.010–0.028) and a non-monotonic pattern, it is underpowered and should not be read as an established relationship.*
 
